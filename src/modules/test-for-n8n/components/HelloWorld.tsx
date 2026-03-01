@@ -20,16 +20,22 @@ export default function HelloWorld() {
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   function handleButtonClick() {
-    if (timerRef.current !== null) {
-      clearTimeout(timerRef.current);
+    try {
+      if (timerRef.current !== null) {
+        clearTimeout(timerRef.current);
+      }
+
+      setMessage(CLICKED_MESSAGE);
+
+      timerRef.current = setTimeout(() => {
+        setMessage(DEFAULT_MESSAGE);
+        timerRef.current = null;
+      }, RESET_DELAY_MS);
+    } catch (err) {
+      if (process.env.NODE_ENV === "development") {
+        console.warn("[HelloWorld] Unexpected error in click handler:", err);
+      }
     }
-
-    setMessage(CLICKED_MESSAGE);
-
-    timerRef.current = setTimeout(() => {
-      setMessage(DEFAULT_MESSAGE);
-      timerRef.current = null;
-    }, RESET_DELAY_MS);
   }
 
   useEffect(() => {
