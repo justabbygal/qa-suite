@@ -2,8 +2,8 @@
  * POST /api/invites  — create a new invitation
  * GET  /api/invites  — list invitations for the caller's organisation
  *
- * Auth is expected to be resolved by the Better Auth middleware (not yet wired)
- * and forwarded as request headers:
+ * Auth is expected to be resolved by the Better Auth middleware and forwarded
+ * as request headers:
  *   Authorization: Bearer <token>
  *   x-user-id:          <uuid>
  *   x-organization-id:  <uuid>
@@ -23,26 +23,23 @@ import {
 import {
   InviteError,
   RateLimitError,
-  InviteAlreadyExistsError,
   InvalidEmailError,
   InvalidRoleError,
   UnauthorizedError,
-  DatabaseError,
+  ForbiddenError,
   toInviteError,
 } from "@/lib/errors/invite-errors";
 import { inviteMonitor } from "@/lib/invite-monitor";
 import { withRetry } from "@/lib/email/retry";
-
-// ---------------------------------------------------------------------------
-// Constants
-// ---------------------------------------------------------------------------
-
-const VALID_ROLES = ["Owner", "Admin", "User"] as const;
-type InviteRole = (typeof VALID_ROLES)[number];
-
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-const INVITE_EXPIRY_DAYS = 7;
+import { logAuditEventFireAndForget } from "@/lib/audit/logger";
+import {
+  VALID_ROLES,
+  EMAIL_REGEX,
+  type InviteRole,
+  createInvite,
+  listInvitesByOrg,
+  sendInviteEmail,
+} from "@/lib/invites";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -55,65 +52,6 @@ function getSupabaseAdmin() {
   );
 }
 
-function validateEmail(email: string): void {
-  if (!EMAIL_RE.test(email)) throw new InvalidEmailError(email);
-}
-
-function validateRole(role: string): InviteRole {
-  if (!VALID_ROLES.includes(role as InviteRole)) throw new InvalidRoleError(role);
-  return role as InviteRole;
-}
-
-function generateToken(): string {
-  const buf = new Uint8Array(32);
-  crypto.getRandomValues(buf);
-  return Array.from(buf, (b) => b.toString(16).padStart(2, "0")).join("");
-}
-
-async function sendInviteEmail(
-  email: string,
-  token: string,
-  inviterName: string
-): Promise<void> {
-  if (!process.env.RESEND_API_KEY) {
-    // Development fallback: log the invite URL instead of sending an email
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
-    console.log(
-      JSON.stringify({
-        ts: new Date().toISOString(),
-        service: "invite-email",
-        event: "dev_fallback",
-        to: email,
-        inviteUrl: `${appUrl}/invite/${token}`,
-        invitedBy: inviterName,
-      })
-    );
-    return;
-  }
-
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
-  const res = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      from: process.env.EMAIL_FROM ?? "noreply@qa-suite.app",
-      to: email,
-      subject: `You've been invited to join QA Suite`,
-      html: `<p><strong>${inviterName}</strong> has invited you to join the QA Suite workspace.</p>
-             <p><a href="${appUrl}/invite/${token}">Accept invitation</a></p>
-             <p>This link expires in ${INVITE_EXPIRY_DAYS} days.</p>`,
-    }),
-  });
-
-  if (!res.ok) {
-    const body = await res.text().catch(() => "");
-    throw new Error(`Resend API ${res.status}: ${body}`);
-  }
-}
-
 // ---------------------------------------------------------------------------
 // POST /api/invites
 // ---------------------------------------------------------------------------
@@ -124,9 +62,15 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const authHeader = request.headers.get("authorization");
     const userId = request.headers.get("x-user-id");
     const organizationId = request.headers.get("x-organization-id");
+    const userRole = request.headers.get("x-user-role");
 
     if (!authHeader?.startsWith("Bearer ") || !userId || !organizationId) {
       throw new UnauthorizedError();
+    }
+
+    // Only Owners and Admins may create invitations
+    if (!userRole || !["Owner", "Admin"].includes(userRole)) {
+      throw new ForbiddenError();
     }
 
     // Per-user rate limiting
@@ -174,56 +118,32 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     }
 
     // Validate inputs
-    validateEmail(rawEmail);
-    const role = validateRole(rawRole);
+    if (!EMAIL_REGEX.test(rawEmail)) throw new InvalidEmailError(rawEmail);
+    if (!VALID_ROLES.includes(rawRole as InviteRole)) {
+      throw new InvalidRoleError(rawRole);
+    }
+
     const email = rawEmail.toLowerCase();
+    const role = rawRole as InviteRole;
+
+    // Admins cannot invite Owners
+    if (userRole === "Admin" && role === "Owner") {
+      throw new ForbiddenError();
+    }
 
     const supabase = getSupabaseAdmin();
 
-    // Check for an existing pending invite to the same address
-    const { data: existing, error: checkErr } = await supabase
-      .from("invitations")
-      .select("id")
-      .eq("organization_id", organizationId)
-      .eq("email", email)
-      .is("used_at", null)
-      .gt("expires_at", new Date().toISOString())
-      .maybeSingle();
-
-    if (checkErr) {
-      throw new DatabaseError("check existing invite", new Error(checkErr.message));
-    }
-    if (existing) {
-      throw new InviteAlreadyExistsError(email);
-    }
-
     // Create the invite record
-    const token = generateToken();
-    const expiresAt = new Date(
-      Date.now() + INVITE_EXPIRY_DAYS * 24 * 60 * 60 * 1000
-    ).toISOString();
-
-    const { data: invite, error: insertErr } = await supabase
-      .from("invitations")
-      .insert({
-        organization_id: organizationId,
-        email,
-        role,
-        invited_by: userId,
-        token,
-        expires_at: expiresAt,
-      })
-      .select("id, email, role, expires_at, created_at")
-      .single();
-
-    if (insertErr || !invite) {
-      inviteMonitor.recordInviteFailed(insertErr?.message ?? "insert failed");
-      throw new DatabaseError("create invite", new Error(insertErr?.message));
-    }
+    const invite = await createInvite(supabase, {
+      organizationId,
+      email,
+      role,
+      invitedBy: userId,
+    });
 
     // Send email with exponential-backoff retry
     const emailResult = await withRetry(
-      () => sendInviteEmail(email, token, userId),
+      () => sendInviteEmail(email, invite.token, userId),
       { maxAttempts: 3, initialDelayMs: 1_000, maxDelayMs: 10_000 }
     );
 
@@ -246,6 +166,25 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
     inviteMonitor.recordInviteSent();
 
+    // Audit log — actor_email/actor_name use userId as placeholder until
+    // the Better Auth middleware injects the full user profile into headers.
+    logAuditEventFireAndForget({
+      organization_id: organizationId,
+      actor_id: userId,
+      actor_email: userId,
+      actor_name: userId,
+      action: "invite.create",
+      resource_type: "invitation",
+      resource_id: invite.id,
+      resource_name: invite.email,
+      changes: null,
+      ip_address:
+        request.headers.get("x-forwarded-for") ??
+        request.headers.get("x-real-ip") ??
+        null,
+      user_agent: request.headers.get("user-agent") ?? null,
+    });
+
     return NextResponse.json(
       {
         data: {
@@ -257,7 +196,6 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
             createdAt: invite.created_at,
           },
           emailSent: emailResult.success,
-          // Graceful degradation: inform the caller when email couldn't be sent
           ...(!emailResult.success && {
             warning:
               "Invitation created but the email could not be sent. Share the invite link directly if needed.",
@@ -310,39 +248,9 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     const { searchParams } = request.nextUrl;
     const status = searchParams.get("status"); // pending | accepted | expired
 
-    let query = supabase
-      .from("invitations")
-      .select("id, email, role, invited_by, expires_at, used_at, created_at")
-      .eq("organization_id", organizationId)
-      .order("created_at", { ascending: false });
+    const invites = await listInvitesByOrg(supabase, { organizationId, status });
 
-    const now = new Date().toISOString();
-    if (status === "pending") {
-      query = query.is("used_at", null).gt("expires_at", now);
-    } else if (status === "accepted") {
-      query = query.not("used_at", "is", null);
-    } else if (status === "expired") {
-      query = query.is("used_at", null).lt("expires_at", now);
-    }
-
-    const { data: invites, error } = await query;
-
-    if (error) {
-      throw new DatabaseError("list invites", new Error(error.message));
-    }
-
-    // Annotate each invite with a derived status field
-    const now2 = new Date();
-    const annotated = (invites ?? []).map((inv) => ({
-      ...inv,
-      status: inv.used_at
-        ? "accepted"
-        : new Date(inv.expires_at) < now2
-          ? "expired"
-          : "pending",
-    }));
-
-    return NextResponse.json({ data: { invites: annotated } });
+    return NextResponse.json({ data: { invites } });
   } catch (error) {
     const ie = toInviteError(error);
 
