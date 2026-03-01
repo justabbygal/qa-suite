@@ -108,9 +108,9 @@ function PermissionsContent({ selectedRole }: PermissionsContentProps) {
               <CardTitle className="text-base">{mod.displayName}</CardTitle>
               <p className="font-mono text-xs text-muted-foreground">{mod.module}</p>
             </CardHeader>
-            <CardContent className="space-y-3">
+            <CardContent className="space-y-1">
               {/* Feature Access */}
-              <div className="flex items-center justify-between">
+              <div className="flex min-h-[44px] items-center justify-between gap-3">
                 <div>
                   <p className="text-sm font-medium">Feature Access</p>
                   <p className="text-xs text-muted-foreground">

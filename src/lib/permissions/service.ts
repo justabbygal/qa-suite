@@ -1,5 +1,14 @@
 import type { Role, ResolvedPermission, PermissionOverride } from "./types";
 import { getModule } from "./registry";
+import type { RegisteredModule } from "@/lib/modules/types";
+import {
+  parsePermissionKey as parseDynamicKey,
+  resolveModulePermission,
+  hasPermission as dynamicHasPermission,
+  normalizeToModuleRole,
+  type ParsedPermissionKey,
+  type ResolvedModulePermission,
+} from "@/lib/services/dynamic-permission-resolver";
 
 /** Numeric privilege level for each role. Higher = more privileged. */
 const ROLE_LEVELS: Record<Role, number> = {
