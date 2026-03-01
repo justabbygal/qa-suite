@@ -82,3 +82,39 @@ export async function changeUserRole({
     throw new Error(message);
   }
 }
+
+// ---------------------------------------------------------------------------
+// Shared display types used by useUsers and UserList/UserCard components
+// ---------------------------------------------------------------------------
+
+/** Capitalized role values as stored in the DB (profiles + invites tables). */
+export type UserEntryRole = "Owner" | "Admin" | "User";
+
+/** Display status derived from profile membership or invite state. */
+export type UserStatus = "active" | "invited" | "expired";
+
+/**
+ * Unified display object representing either an active org member (sourced
+ * from the profiles table) or a pending/expired invitation.
+ */
+export interface UserEntry {
+  /** Unique ID — profile row ID for active users, invite row ID for invites. */
+  id: string;
+  /** Distinguishes active org members from pending invitations. */
+  type: "user" | "invite";
+  /** Display name for users; email address for invites (no profile yet). */
+  name: string;
+  email: string;
+  role: UserEntryRole;
+  status: UserStatus;
+  /** Profile user_id — only present for active org members. */
+  userId?: string;
+  avatarUrl?: string | null;
+  jobTitle?: string | null;
+  department?: string | null;
+  /** ISO timestamp; only present for invite entries. */
+  expiresAt?: string;
+  /** Email of the person who sent the invite; only present for invite entries. */
+  invitedBy?: string;
+  createdAt: string;
+}
