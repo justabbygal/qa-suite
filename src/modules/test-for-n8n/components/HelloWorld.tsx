@@ -47,7 +47,11 @@ export default function HelloWorld() {
     >
       <Card className="w-full max-w-md shadow-md">
         <CardHeader className="pb-2">
-          <h1 className="text-center text-3xl font-bold tracking-tight text-foreground">
+          <h1
+            aria-live="polite"
+            aria-atomic="true"
+            className="text-center text-3xl font-bold tracking-tight text-foreground"
+          >
             {message}
           </h1>
         </CardHeader>
@@ -57,7 +61,12 @@ export default function HelloWorld() {
           </p>
         </CardContent>
         <CardFooter className="flex justify-center">
-          <Button onClick={handleButtonClick}>Click Me</Button>
+          <Button
+            onClick={handleButtonClick}
+            aria-pressed={message === CLICKED_MESSAGE ? "true" : "false"}
+          >
+            Click Me
+          </Button>
         </CardFooter>
       </Card>
     </main>
