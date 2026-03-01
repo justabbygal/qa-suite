@@ -62,7 +62,10 @@ describe('GET /api/modules', () => {
   });
 
   it('returns 200 with the modules array on success', async () => {
-    const modules = [makeRegisteredModule(), makeRegisteredModule({ id: 'mod-2', module: 'other-module' })];
+    const modules = [
+      makeRegisteredModule(),
+      makeRegisteredModule({ id: 'mod-2', module: 'other-module' }),
+    ];
     mockGetModules.mockResolvedValueOnce(modules);
 
     const req = makeGetRequest({ organizationId: 'org-1' });
