@@ -102,12 +102,12 @@ export function ModuleSection({
                 key={role}
                 aria-label={`${role} role permissions`}
                 className={cn(
-                  'flex items-start gap-4 px-6 py-4',
+                  'flex items-start gap-3 px-4 py-3 sm:gap-4 sm:px-6 sm:py-4',
                   index < ROLES.length - 1 && 'border-b border-border/60'
                 )}
               >
                 {/* Role badge with description */}
-                <div className="w-20 shrink-0 pt-0.5">
+                <div className="w-16 shrink-0 pt-0.5 sm:w-20">
                   <span
                     className={cn(
                       'inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium',
