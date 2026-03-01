@@ -71,6 +71,8 @@ export default function HelloWorld() {
         </CardContent>
         <CardFooter className="flex justify-center">
           <Button
+            variant="default"
+            size="lg"
             onClick={handleButtonClick}
             aria-label="Click to show a confirmation message"
             aria-describedby="hello-world-message"
