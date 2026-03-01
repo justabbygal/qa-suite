@@ -40,6 +40,8 @@ export default function HelloWorld() {
     };
   }, []);
 
+  const isClicked = message === CLICKED_MESSAGE;
+
   return (
     <main
       className="flex min-h-screen items-center justify-center bg-background p-4 sm:p-8"
@@ -48,6 +50,7 @@ export default function HelloWorld() {
       <Card className="w-full max-w-md shadow-md">
         <CardHeader className="pb-2">
           <h1
+            id="hello-world-message"
             aria-live="polite"
             aria-atomic="true"
             className="text-center text-3xl font-bold tracking-tight text-foreground"
@@ -63,7 +66,9 @@ export default function HelloWorld() {
         <CardFooter className="flex justify-center">
           <Button
             onClick={handleButtonClick}
-            aria-pressed={message === CLICKED_MESSAGE ? "true" : "false"}
+            aria-label="Click to show a confirmation message"
+            aria-describedby="hello-world-message"
+            aria-pressed={isClicked}
           >
             Click Me
           </Button>
