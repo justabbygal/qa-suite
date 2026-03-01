@@ -10,6 +10,11 @@ const customConfig = {
     '^@/(.*)$': '<rootDir>/src/$1',
   },
   testMatch: ['**/__tests__/**/*.[jt]s?(x)', '**/?(*.)+(spec|test).[jt]s?(x)'],
+  testPathIgnorePatterns: [
+    '<rootDir>/node_modules/',
+    '<rootDir>/__tests__/fixtures/',
+    '<rootDir>/__tests__/utils/',
+  ],
 };
 
 module.exports = createJestConfig(customConfig);
