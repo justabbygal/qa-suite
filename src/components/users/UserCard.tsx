@@ -2,7 +2,7 @@
 
 import { cn } from "@/lib/utils";
 import { Card, CardContent } from "@/components/ui/card";
-import type { UserEntry, UserEntryRole, UserStatus } from "@/lib/api/users";
+import type { UserEntry, UserEntryRole, UserStatus } from "@/hooks/useUsers";
 
 // ---------------------------------------------------------------------------
 // Style maps
