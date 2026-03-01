@@ -118,6 +118,7 @@ export default function TeamInvitesPage() {
               onResend={resendInvite}
               onCancel={cancelInvite}
               onRetry={refetch}
+              currentUserRole={userRole as "owner" | "admin"}
             />
           </section>
         </div>
