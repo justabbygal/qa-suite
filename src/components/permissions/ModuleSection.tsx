@@ -52,6 +52,14 @@ export interface ModuleSectionProps {
   ) => void;
   /** When true, all toggles are non-interactive */
   readOnly?: boolean;
+  /**
+   * Subset of roles whose toggles are interactive. Roles not in this list are
+   * rendered as read-only so viewers can see (but not change) their permissions.
+   * When omitted, all roles are editable (subject to `readOnly`).
+   */
+  editableRoles?: Role[];
+  /** When true, renders a subtle opacity pulse while a save is in-flight. */
+  pending?: boolean;
   className?: string;
 }
 
@@ -64,6 +72,8 @@ export function ModuleSection({
   module,
   onPermissionChange,
   readOnly = false,
+  editableRoles,
+  pending = false,
   className,
 }: ModuleSectionProps) {
   function handleChange(
@@ -72,6 +82,7 @@ export function ModuleSection({
     value: boolean
   ) {
     if (readOnly || !onPermissionChange) return;
+    if (editableRoles !== undefined && !editableRoles.includes(role)) return;
     onPermissionChange(module.id, role, field, value);
   }
 
@@ -96,6 +107,9 @@ export function ModuleSection({
               settingsAccess: false,
             };
             const meta = ROLE_META[role];
+            const isRoleReadOnly =
+              readOnly ||
+              (editableRoles !== undefined && !editableRoles.includes(role));
 
             return (
               <div
@@ -111,7 +125,8 @@ export function ModuleSection({
                   <span
                     className={cn(
                       'inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium',
-                      meta.badgeClass
+                      meta.badgeClass,
+                      isRoleReadOnly && 'opacity-60'
                     )}
                   >
                     {role}
@@ -127,7 +142,8 @@ export function ModuleSection({
                     featureEnabled={perms.featureAccess}
                     settingsEnabled={perms.settingsAccess}
                     hasSettings={module.hasSettings}
-                    disabled={readOnly}
+                    disabled={isRoleReadOnly}
+                    pending={pending}
                     onFeatureChange={(value) =>
                       handleChange(role, 'featureAccess', value)
                     }
