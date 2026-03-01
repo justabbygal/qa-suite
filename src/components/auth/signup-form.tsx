@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 import { useState, useCallback } from 'react';
-import { Loader2 } from 'lucide-react';
+import { Loader2, CheckCircle2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -21,6 +21,7 @@ import {
   logAuthError,
 } from '@/lib/utils/errors';
 import { cn } from '@/lib/utils';
+import { supabase } from '@/lib/supabase';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -164,6 +165,7 @@ export function SignupForm({ onSuccess, onSignInClick }: SignupFormProps) {
   const [topError, setTopError] = useState<AuthError | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isRetrying, setIsRetrying] = useState(false);
+  const [isSuccess, setIsSuccess] = useState(false);
 
   // Clear field errors and top error as the user types
   const handleChange = useCallback(
@@ -189,35 +191,48 @@ export function SignupForm({ onSuccess, onSignInClick }: SignupFormProps) {
       }),
     });
 
-    if (response.ok) return;
+    if (!response.ok) {
+      const authErr = await parseSignupApiError(response);
 
-    const authErr = await parseSignupApiError(response);
-
-    // Apply server-returned field-level errors
-    if (authErr.fieldErrors?.length) {
-      const fromServer: FieldErrors = {};
-      for (const fe of authErr.fieldErrors) {
-        if (fe.field in INITIAL_VALUES) {
-          fromServer[fe.field as keyof FieldErrors] = fe.message;
+      // Apply server-returned field-level errors
+      if (authErr.fieldErrors?.length) {
+        const fromServer: FieldErrors = {};
+        for (const fe of authErr.fieldErrors) {
+          if (fe.field in INITIAL_VALUES) {
+            fromServer[fe.field as keyof FieldErrors] = fe.message;
+          }
         }
+        setFieldErrors(fromServer);
       }
-      setFieldErrors(fromServer);
+
+      // Map well-known codes to targeted field errors for immediate feedback
+      if (authErr.code === 'DUPLICATE_EMAIL') {
+        setFieldErrors((prev) => ({
+          ...prev,
+          email: 'An account with this email already exists.',
+        }));
+      } else if (authErr.code === 'DUPLICATE_ORG') {
+        setFieldErrors((prev) => ({
+          ...prev,
+          organizationName: 'An organization with this name already exists.',
+        }));
+      }
+
+      throw authErr;
     }
 
-    // Map well-known codes to targeted field errors for immediate feedback
-    if (authErr.code === 'DUPLICATE_EMAIL') {
-      setFieldErrors((prev) => ({
-        ...prev,
-        email: 'An account with this email already exists.',
-      }));
-    } else if (authErr.code === 'DUPLICATE_ORG') {
-      setFieldErrors((prev) => ({
-        ...prev,
-        organizationName: 'An organization with this name already exists.',
-      }));
-    }
+    // Account and organization created — authenticate the user automatically
+    const { error: signInError } = await supabase.auth.signInWithPassword({
+      email: vals.email.trim().toLowerCase(),
+      password: vals.password,
+    });
 
-    throw authErr;
+    if (signInError) {
+      // Account was created successfully; sign-in failed (e.g. email
+      // confirmation required). Not a fatal error — surface as a warning
+      // so the user knows they must confirm their email or sign in manually.
+      logAuthError('signup_auto_signin', signInError);
+    }
   }, []);
 
   const handleSubmit = useCallback(
@@ -236,6 +251,7 @@ export function SignupForm({ onSuccess, onSignInClick }: SignupFormProps) {
       setIsSubmitting(true);
       try {
         await submitSignup(values);
+        setIsSuccess(true);
         onSuccess?.();
       } catch (err) {
         logAuthError('signup_submit', err);
@@ -258,6 +274,7 @@ export function SignupForm({ onSuccess, onSignInClick }: SignupFormProps) {
     setIsRetrying(true);
     try {
       await submitSignup(values);
+      setIsSuccess(true);
       onSuccess?.();
     } catch (err) {
       logAuthError('signup_retry', err);
@@ -272,6 +289,30 @@ export function SignupForm({ onSuccess, onSignInClick }: SignupFormProps) {
   }, [values, submitSignup, onSuccess]);
 
   const isLoading = isSubmitting || isRetrying;
+
+  if (isSuccess) {
+    return (
+      <Card className="w-full max-w-md">
+        <CardHeader className="space-y-1">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="h-6 w-6 text-green-500" aria-hidden="true" />
+            <CardTitle className="text-2xl">Account created!</CardTitle>
+          </div>
+          <CardDescription>
+            Your account and organization have been set up successfully.
+            You are now signed in.
+          </CardDescription>
+        </CardHeader>
+        {onSignInClick && (
+          <CardFooter>
+            <p className="text-sm text-muted-foreground">
+              Taking you to your dashboard&hellip;
+            </p>
+          </CardFooter>
+        )}
+      </Card>
+    );
+  }
 
   return (
     <Card className="w-full max-w-md">
