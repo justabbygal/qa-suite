@@ -129,6 +129,10 @@ export function BulkToggle({
         </div>
 
         {/* Bulk toggle button — three visual states: all-on, mixed, all-off */}
+        {/*
+         * Outer button provides a min 44×44 px touch target (WCAG 2.5.5)
+         * while keeping the visual track at its original compact size.
+         */}
         <button
           type="button"
           role="switch"
@@ -137,26 +141,34 @@ export function BulkToggle({
           disabled={disabled}
           onClick={handleClick}
           className={cn(
-            'relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors',
+            'inline-flex min-h-[44px] min-w-[44px] shrink-0 items-center justify-center rounded',
             'focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
-            allEnabled
-              ? 'bg-primary'
-              : isMixed
-              ? 'bg-primary/50'
-              : 'bg-input',
             disabled && 'cursor-not-allowed opacity-40'
           )}
         >
+          {/* Visual toggle track */}
           <span
             className={cn(
-              'inline-block h-4 w-4 rounded-full bg-white shadow-sm transition-transform',
+              'relative inline-flex h-6 w-11 items-center rounded-full transition-colors pointer-events-none',
               allEnabled
-                ? 'translate-x-6'
+                ? 'bg-primary'
                 : isMixed
-                ? 'translate-x-3'
-                : 'translate-x-1'
+                ? 'bg-primary/50'
+                : 'bg-input'
             )}
-          />
+          >
+            {/* Toggle thumb */}
+            <span
+              className={cn(
+                'inline-block h-4 w-4 rounded-full bg-white shadow-sm transition-transform',
+                allEnabled
+                  ? 'translate-x-6'
+                  : isMixed
+                  ? 'translate-x-3'
+                  : 'translate-x-1'
+              )}
+            />
+          </span>
         </button>
       </div>
 
