@@ -42,6 +42,15 @@ interface FieldErrors {
   organizationName?: string;
 }
 
+/** Data returned from the API on successful signup. */
+export interface SignupResult {
+  userId: string;
+  organizationId: string;
+  role: string;
+  name: string;
+  email: string;
+}
+
 // ---------------------------------------------------------------------------
 // Client-side validation
 // ---------------------------------------------------------------------------
@@ -135,7 +144,7 @@ function FormField({ id, label, error, className, ...props }: FormFieldProps) {
 
 export interface SignupFormProps {
   /** Called after the owner account and organization are created successfully. */
-  onSuccess?: () => void;
+  onSuccess?: (data: SignupResult) => void;
   /** Called when the user clicks the "Sign in" link. */
   onSignInClick?: () => void;
 }
@@ -177,7 +186,7 @@ export function SignupForm({ onSuccess, onSignInClick }: SignupFormProps) {
   );
 
   // Core submission logic — separated so it can be reused by retry
-  const submitSignup = useCallback(async (vals: FormValues): Promise<void> => {
+  const submitSignup = useCallback(async (vals: FormValues): Promise<SignupResult> => {
     const response = await fetch('/api/auth/signup', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -189,7 +198,10 @@ export function SignupForm({ onSuccess, onSignInClick }: SignupFormProps) {
       }),
     });
 
-    if (response.ok) return;
+    if (response.ok) {
+      const { data } = (await response.json()) as { data: SignupResult };
+      return data;
+    }
 
     const authErr = await parseSignupApiError(response);
 
@@ -235,8 +247,8 @@ export function SignupForm({ onSuccess, onSignInClick }: SignupFormProps) {
 
       setIsSubmitting(true);
       try {
-        await submitSignup(values);
-        onSuccess?.();
+        const result = await submitSignup(values);
+        onSuccess?.(result);
       } catch (err) {
         logAuthError('signup_submit', err);
         const authErr = toAuthError(err);
@@ -257,8 +269,8 @@ export function SignupForm({ onSuccess, onSignInClick }: SignupFormProps) {
     setTopError(null);
     setIsRetrying(true);
     try {
-      await submitSignup(values);
-      onSuccess?.();
+      const result = await submitSignup(values);
+      onSuccess?.(result);
     } catch (err) {
       logAuthError('signup_retry', err);
       const authErr = toAuthError(err);
