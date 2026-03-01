@@ -200,7 +200,14 @@ function DualPermissionToggle({
   }
 
   return (
-    <div className="w-full space-y-1">
+    <div className="w-full space-y-1" aria-busy={pending || undefined}>
+      {/* Visually-hidden live region so screen readers announce save state */}
+      {pending && (
+        <span className="sr-only" aria-live="polite" aria-atomic="true">
+          Saving permission changes
+        </span>
+      )}
+
       {/* Feature Access row */}
       <div className="flex min-h-[44px] items-center justify-between gap-3">
         <div className="min-w-0">
