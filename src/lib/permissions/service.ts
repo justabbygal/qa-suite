@@ -105,3 +105,73 @@ export function shouldShowElement(
   }
   return permission.canUse;
 }
+
+// ---------------------------------------------------------------------------
+// Module-aware helpers (DB-backed registered modules)
+// ---------------------------------------------------------------------------
+
+// Re-export the parsed key type for callers that import from this module.
+export type { ParsedPermissionKey, ResolvedModulePermission };
+
+/**
+ * Parses a dot-notation permission key into its moduleId and field.
+ *
+ * @param key - Dot-notation key, e.g. `"analytics.featureAccess"`.
+ * @returns   Parsed `{ moduleId, field }`.
+ * @throws {DynamicPermissionResolverError} When the format is invalid.
+ *
+ * @example
+ *   parsePermissionKey("user-management.settingsAccess")
+ *   // → { moduleId: "user-management", field: "settingsAccess" }
+ */
+export function parsePermissionKey(key: string): ParsedPermissionKey {
+  return parseDynamicKey(key);
+}
+
+/**
+ * Resolves the effective permission for a (lowercase) role on a module using
+ * the organization's DB-backed registered module list.
+ *
+ * This bridges the lowercase `Role` type used by the service layer to the
+ * capitalized `ModuleRole` type used by `RegisteredModule.permissions`.
+ *
+ * Falls back to the in-memory manifest registry when the module is not found
+ * in the provided `modules` list (backward compatibility).
+ *
+ * @param modules  - DB-backed registered module list for the organization.
+ * @param role     - Lowercase role ("owner" | "admin" | "user").
+ * @param moduleId - Module slug (kebab-case) or UUID.
+ */
+export function resolvePermissionFromModules(
+  modules: RegisteredModule[],
+  role: Role,
+  moduleId: string
+): ResolvedPermission {
+  const moduleRole = normalizeToModuleRole(role);
+  const resolved = resolveModulePermission(modules, moduleRole, moduleId);
+  return {
+    canUse: resolved.canUse,
+    canConfigure: resolved.canConfigure,
+  };
+}
+
+/**
+ * Checks a specific permission for a (lowercase) role against the
+ * organization's registered module list using a dot-notation key.
+ *
+ * @param key     - Dot-notation permission key, e.g. `"analytics.featureAccess"`.
+ * @param role    - Lowercase role ("owner" | "admin" | "user").
+ * @param modules - DB-backed registered module list for the organization.
+ * @returns `true` if the role has the permission.
+ * @throws {DynamicPermissionResolverError} When the key format is invalid.
+ *
+ * @example
+ *   checkPermissionByKey("analytics.featureAccess", "admin", modules)
+ */
+export function checkPermissionByKey(
+  key: string,
+  role: Role,
+  modules: RegisteredModule[]
+): boolean {
+  return dynamicHasPermission(modules, role, key);
+}
