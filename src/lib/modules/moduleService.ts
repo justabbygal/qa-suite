@@ -2,10 +2,14 @@ import { SupabaseClient } from '@supabase/supabase-js';
 import { ModuleManifest, ModuleUpdatePayload, RegisteredModule, RolePermissions } from './types';
 import {
   applyPermissionConstraints,
-  generateDefaultPermissions,
+  generateDefaultPermissions as buildDefaultPermissions,
   validateModuleManifest,
   validatePermissions,
 } from './permissionGenerator';
+import {
+  generateDefaultPermissions as createPermissionRows,
+  cleanupModulePermissions,
+} from '@/lib/services/permission-generator';
 
 const TABLE_NAME = 'registered_modules';
 
@@ -60,7 +64,7 @@ export async function registerModule(
     );
   }
 
-  const permissions = generateDefaultPermissions(manifest);
+  const permissions = buildDefaultPermissions(manifest);
 
   const { data, error } = await supabase
     .from(TABLE_NAME)
@@ -81,7 +85,23 @@ export async function registerModule(
     );
   }
 
-  return mapToRegisteredModule(data);
+  const registeredModule = mapToRegisteredModule(data);
+
+  // Create explicit permission rows in module_permissions for all roles.
+  // If this fails, roll back by deleting the module record we just created.
+  try {
+    await createPermissionRows(supabase, registeredModule);
+  } catch (permError) {
+    await supabase.from(TABLE_NAME).delete().eq('id', registeredModule.id);
+    throw new ModuleServiceError(
+      `Failed to generate permissions for module '${manifest.module}': ${
+        permError instanceof Error ? permError.message : 'unknown error'
+      }`,
+      'DATABASE_ERROR'
+    );
+  }
+
+  return registeredModule;
 }
 
 export async function updateModule(
@@ -143,6 +163,12 @@ export async function deregisterModule(
   supabase: SupabaseClient,
   moduleId: string
 ): Promise<void> {
+  // Fetch the module first so we can clean up its permission rows.
+  const module = await getModule(supabase, moduleId);
+  if (module) {
+    await cleanupModulePermissions(supabase, module.organizationId, module.module);
+  }
+
   const { error } = await supabase
     .from(TABLE_NAME)
     .delete()

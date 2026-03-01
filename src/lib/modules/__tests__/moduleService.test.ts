@@ -10,6 +10,22 @@ import {
 import { makeModuleManifest, makeRegisteredModule, makeRolePermissions, toDbRow } from './testUtils';
 
 // ---------------------------------------------------------------------------
+// Mock the permission generator so moduleService tests stay isolated.
+// The permission-generator service has its own dedicated test file.
+// ---------------------------------------------------------------------------
+
+jest.mock('@/lib/services/permission-generator', () => ({
+  generateDefaultPermissions: jest.fn().mockResolvedValue([]),
+  cleanupModulePermissions: jest.fn().mockResolvedValue(undefined),
+  PermissionGeneratorError: class PermissionGeneratorError extends Error {
+    constructor(message: string, public readonly code: string) {
+      super(message);
+      this.name = 'PermissionGeneratorError';
+    }
+  },
+}));
+
+// ---------------------------------------------------------------------------
 // Supabase mock factory
 //
 // Returns a mock SupabaseClient where every query chain resolves to the
