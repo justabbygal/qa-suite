@@ -13,10 +13,12 @@ const RESET_DELAY_MS = 3000;
  *
  * A simple interactive component used to verify the module scaffold, routing,
  * and UI component integration are working correctly. It renders a card
- * with a message that updates on button click and auto-resets after 3 seconds.
+ * with a message that updates on button click and auto-resets after 3 seconds,
+ * with visual feedback during the countdown period.
  */
 export default function HelloWorld() {
   const [message, setMessage] = useState(DEFAULT_MESSAGE);
+  const [clickCount, setClickCount] = useState(0);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   function handleButtonClick() {
@@ -26,6 +28,7 @@ export default function HelloWorld() {
       }
 
       setMessage(CLICKED_MESSAGE);
+      setClickCount((c) => c + 1);
 
       timerRef.current = setTimeout(() => {
         setMessage(DEFAULT_MESSAGE);
@@ -46,7 +49,7 @@ export default function HelloWorld() {
     };
   }, []);
 
-  const isClicked = message === CLICKED_MESSAGE;
+  const isActive = message === CLICKED_MESSAGE;
 
   return (
     <main
@@ -59,7 +62,9 @@ export default function HelloWorld() {
             id="hello-world-message"
             aria-live="polite"
             aria-atomic="true"
-            className="text-center text-3xl font-bold tracking-tight text-foreground"
+            className={`text-center text-3xl font-bold tracking-tight transition-colors duration-300 ${
+              isActive ? "text-primary" : "text-foreground"
+            }`}
           >
             {message}
           </h1>
@@ -68,15 +73,27 @@ export default function HelloWorld() {
           <p className="text-center text-base text-muted-foreground">
             test-for-n8n module is running successfully.
           </p>
+          <div
+            className="mt-4 h-1 w-full overflow-hidden rounded-full bg-secondary"
+            aria-hidden="true"
+          >
+            {isActive && (
+              <div
+                key={clickCount}
+                className="h-full animate-countdown rounded-full bg-primary"
+              />
+            )}
+          </div>
         </CardContent>
         <CardFooter className="flex justify-center">
           <Button
-            variant="default"
+            variant={isActive ? "secondary" : "default"}
             size="lg"
             onClick={handleButtonClick}
             aria-label="Click to show a confirmation message"
             aria-describedby="hello-world-message"
-            aria-pressed={isClicked}
+            aria-pressed={isActive}
+            className="transition-all duration-200"
           >
             Click Me
           </Button>
