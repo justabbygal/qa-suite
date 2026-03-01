@@ -46,6 +46,10 @@ import {
   UserErrorCode,
   toUserError,
 } from "@/lib/errors/user-errors";
+import {
+  logPermissionChanges,
+  resolveActorInfo,
+} from "@/lib/services/permissions";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -206,6 +210,21 @@ export async function PATCH(
     }
 
     // ------------------------------------------------------------------
+    // Resolve actor identity for audit logging
+    // ------------------------------------------------------------------
+    const actorInfo = await resolveActorInfo(supabase, actorId);
+    const actor = {
+      id: actorId,
+      email: actorInfo.email,
+      name: actorInfo.name,
+      ipAddress:
+        request.headers.get("x-forwarded-for") ??
+        request.headers.get("x-real-ip") ??
+        null,
+      userAgent: request.headers.get("user-agent") ?? null,
+    };
+
+    // ------------------------------------------------------------------
     // Persist
     // ------------------------------------------------------------------
     // Pass the fully merged & constrained permissions so updateModule's
@@ -213,6 +232,19 @@ export async function PATCH(
     const updated = await updateModule(supabase, moduleId, {
       permissions: constrained,
     });
+
+    // ------------------------------------------------------------------
+    // Audit log — one entry per changed (role × field) pair.
+    // Fire-and-forget so a logging failure never breaks the response.
+    // ------------------------------------------------------------------
+    logPermissionChanges(
+      supabase,
+      organizationId,
+      currentModule.module,
+      currentModule.permissions,
+      updated.permissions,
+      actor
+    );
 
     // Return the updated module directly — no wrapper.
     return NextResponse.json(updated);
