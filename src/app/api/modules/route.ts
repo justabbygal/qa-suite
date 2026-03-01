@@ -1,7 +1,8 @@
 import { createClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
-import { ModuleServiceError, getModules, registerModule } from '@/lib/modules/moduleService';
+import { ModuleServiceError, registerModule } from '@/lib/modules/moduleService';
 import { ModuleManifest } from '@/lib/modules/types';
+import { ModuleListingError, getModulesWithPermissions } from '@/lib/services/module-service';
 
 function getSupabaseClient() {
   return createClient(
@@ -12,7 +13,8 @@ function getSupabaseClient() {
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
-  const organizationId = searchParams.get('organizationId');
+  const organizationId =
+    searchParams.get('organizationId') ?? request.headers.get('x-organization-id');
 
   if (!organizationId) {
     return NextResponse.json({ error: 'organizationId is required' }, { status: 400 });
@@ -20,9 +22,12 @@ export async function GET(request: NextRequest) {
 
   try {
     const supabase = getSupabaseClient();
-    const modules = await getModules(supabase, organizationId);
+    const modules = await getModulesWithPermissions(supabase, organizationId);
     return NextResponse.json({ modules });
-  } catch {
+  } catch (error) {
+    if (error instanceof ModuleListingError && error.code === 'INVALID_INPUT') {
+      return NextResponse.json({ error: error.message }, { status: 400 });
+    }
     return NextResponse.json({ error: 'Failed to fetch modules' }, { status: 500 });
   }
 }
