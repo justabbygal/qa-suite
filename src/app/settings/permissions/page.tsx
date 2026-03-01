@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { PermissionsPageClient } from "./PermissionsPageClient";
 
 export const metadata: Metadata = {
   title: "Permissions - QA Suite",
@@ -13,9 +14,7 @@ export default function PermissionsPage() {
           Control what each role can access and configure across modules.
         </p>
       </div>
-      <div className="rounded-lg border p-4 text-sm text-muted-foreground">
-        Permission management UI coming soon.
-      </div>
+      <PermissionsPageClient />
     </div>
   );
 }

@@ -10,6 +10,12 @@ export interface PermissionToggleProps {
   label: string;
   enabled: boolean;
   disabled?: boolean;
+  /**
+   * When true, an API save is in-flight. The button is disabled and a
+   * pulsing animation signals the pending state. Screen readers are
+   * informed via `aria-busy`.
+   */
+  pending?: boolean;
   onChange: (enabled: boolean) => void;
   /**
    * When provided and the requested change is destructive (disabling an
@@ -23,10 +29,12 @@ export function PermissionToggle({
   label,
   enabled,
   disabled = false,
+  pending = false,
   onChange,
   warningInfo,
 }: PermissionToggleProps) {
   const [dialogOpen, setDialogOpen] = React.useState(false);
+  const isDisabled = disabled || pending;
 
   function handleClick() {
     const newValue = !enabled;
@@ -57,13 +65,15 @@ export function PermissionToggle({
         role="switch"
         aria-checked={enabled}
         aria-label={label}
-        disabled={disabled}
+        aria-busy={pending}
+        disabled={isDisabled}
         onClick={handleClick}
         className={cn(
           'relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors',
           'focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
           enabled ? 'bg-primary' : 'bg-input',
-          disabled && 'cursor-not-allowed opacity-50'
+          isDisabled && 'cursor-not-allowed opacity-50',
+          pending && 'animate-pulse'
         )}
       >
         <span
