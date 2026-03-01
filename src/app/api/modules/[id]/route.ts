@@ -1,3 +1,15 @@
+/**
+ * @deprecated Superseded by /api/modules/[name]/route.ts
+ *
+ * Next.js App Router does not allow two dynamic segment directories at the
+ * same path level. Having both `[id]` and `[name]` under `api/modules/` will
+ * cause a build error. To resolve, delete this `[id]` directory.
+ *
+ * Replacement routes:
+ *   POST   /api/modules/register  — register a module  (register/route.ts)
+ *   PUT    /api/modules/[name]    — update a module     ([name]/route.ts)
+ *   DELETE /api/modules/[name]    — deregister a module ([name]/route.ts)
+ */
 import { createClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
 import {
