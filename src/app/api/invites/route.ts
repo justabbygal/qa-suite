@@ -27,6 +27,7 @@ import {
   InvalidEmailError,
   InvalidRoleError,
   UnauthorizedError,
+  ForbiddenError,
   DatabaseError,
   toInviteError,
 } from "@/lib/errors/invite-errors";
@@ -124,9 +125,15 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const authHeader = request.headers.get("authorization");
     const userId = request.headers.get("x-user-id");
     const organizationId = request.headers.get("x-organization-id");
+    const userRole = request.headers.get("x-user-role");
 
     if (!authHeader?.startsWith("Bearer ") || !userId || !organizationId) {
       throw new UnauthorizedError();
+    }
+
+    // Only Owners and Admins may create invitations
+    if (!userRole || !["Owner", "Admin"].includes(userRole)) {
+      throw new ForbiddenError();
     }
 
     // Per-user rate limiting
@@ -177,6 +184,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     validateEmail(rawEmail);
     const role = validateRole(rawRole);
     const email = rawEmail.toLowerCase();
+
+    // Admins can only invite Users (not Admins or Owners)
+    if (userRole === "Admin" && role !== "User") {
+      throw new ForbiddenError();
+    }
 
     const supabase = getSupabaseAdmin();
 

@@ -13,12 +13,15 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import {
   InviteError,
+  InviteErrorCode,
   InviteNotFoundError,
   UnauthorizedError,
   ForbiddenError,
   DatabaseError,
   toInviteError,
 } from "@/lib/errors/invite-errors";
+import { checkCanManageInvite } from "@/lib/services/admin-restrictions";
+import type { Role } from "@/lib/permissions/types";
 
 function getSupabaseAdmin() {
   return createClient(
@@ -111,13 +114,29 @@ export async function DELETE(
     // Confirm the invite exists within this organisation before deleting
     const { data: invite, error: fetchErr } = await supabase
       .from("invitations")
-      .select("id")
+      .select("id, role")
       .eq("id", params.id)
       .eq("organization_id", organizationId)
       .single();
 
     if (fetchErr || !invite) {
       throw new InviteNotFoundError(params.id);
+    }
+
+    // Admins cannot cancel Admin or Owner invitations
+    const actorRole = userRole.toLowerCase() as Role;
+    const inviteRole = (invite.role as string).toLowerCase() as Role;
+    const restriction = checkCanManageInvite(actorRole, inviteRole);
+    if (!restriction.allowed) {
+      throw new InviteError({
+        code: InviteErrorCode.FORBIDDEN,
+        message: `Admin restriction: ${restriction.message}`,
+        userMessage:
+          restriction.message ??
+          "You do not have permission to cancel this invitation.",
+        httpStatus: 403,
+        retryable: false,
+      });
     }
 
     const { error: deleteErr } = await supabase
