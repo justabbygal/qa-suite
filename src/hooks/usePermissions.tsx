@@ -15,6 +15,7 @@ import {
   revertModule,
   permissionKey,
 } from "@/lib/utils/permission-state";
+import type { PermissionKey } from "@/lib/permissions/types";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -88,6 +89,21 @@ export interface UsePermissionStateReturn {
   bulkUpdatePermissions: (updates: BulkUpdateItem[]) => Promise<BulkUpdateResult>;
   /** Re-fetch the module list from the server. */
   refresh: () => void;
+  /**
+   * Check whether the given role has a specific permission on a module using
+   * the dot-notation key format: "module-id.featureAccess" or
+   * "module-id.settingsAccess".
+   *
+   * Reads from the current (optimistically-updated) module state, so the
+   * result stays in sync with any in-flight permission toggles.
+   *
+   * Returns `false` when the module is not loaded or is not registered.
+   *
+   * @example
+   *   checkPermission("user-management.featureAccess", "Owner") // → true
+   *   checkPermission("integrations.settingsAccess", "User")    // → false
+   */
+  checkPermission: (key: PermissionKey, role: Role) => boolean;
 }
 
 export interface UsePermissionStateOptions {
@@ -302,6 +318,35 @@ export function usePermissionState({
   );
 
   // -------------------------------------------------------------------------
+  // Permission check (dot-notation key)
+  // -------------------------------------------------------------------------
+
+  /**
+   * Reads the current (optimistically-updated) module state to check whether
+   * the given role holds the specified access field. The module is located by
+   * its kebab-case identifier (the `module` field of RegisteredModule), not
+   * its UUID, so the key format matches the registration manifest.
+   */
+  const checkPermission = useCallback(
+    (key: PermissionKey, role: Role): boolean => {
+      const lastDot = key.lastIndexOf(".");
+      const moduleSlug = key.slice(0, lastDot);
+      const field = key.slice(lastDot + 1) as PermissionField;
+
+      const mod = modules.find((m) => m.module === moduleSlug);
+      if (!mod) return false;
+
+      const access = mod.permissions[role];
+      if (!access) return false;
+
+      if (field === "featureAccess") return access.featureAccess;
+      // settingsAccess is only meaningful when featureAccess is also true.
+      return access.featureAccess && access.settingsAccess;
+    },
+    [modules]
+  );
+
+  // -------------------------------------------------------------------------
   // Public API
   // -------------------------------------------------------------------------
 
@@ -313,5 +358,6 @@ export function usePermissionState({
     updatePermission,
     bulkUpdatePermissions,
     refresh: load,
+    checkPermission,
   };
 }

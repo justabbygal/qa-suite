@@ -22,6 +22,7 @@ import {
 } from "@/lib/rate-limit";
 import {
   InviteError,
+  InviteErrorCode,
   RateLimitError,
   InviteAlreadyExistsError,
   InvalidEmailError,
@@ -32,6 +33,8 @@ import {
 } from "@/lib/errors/invite-errors";
 import { inviteMonitor } from "@/lib/invite-monitor";
 import { withRetry } from "@/lib/email/retry";
+import { checkCanManageInvite } from "@/lib/services/admin-restrictions";
+import type { Role } from "@/lib/permissions/types";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -124,9 +127,21 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const authHeader = request.headers.get("authorization");
     const userId = request.headers.get("x-user-id");
     const organizationId = request.headers.get("x-organization-id");
+    const rawUserRole = request.headers.get("x-user-role");
 
     if (!authHeader?.startsWith("Bearer ") || !userId || !organizationId) {
       throw new UnauthorizedError();
+    }
+
+    // Only Owners and Admins may send invitations
+    if (!rawUserRole || !["Owner", "Admin"].includes(rawUserRole)) {
+      throw new InviteError({
+        code: InviteErrorCode.FORBIDDEN,
+        message: "Insufficient permissions to create invitations",
+        userMessage: "You do not have permission to send invitations.",
+        httpStatus: 403,
+        retryable: false,
+      });
     }
 
     // Per-user rate limiting
@@ -177,6 +192,22 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     validateEmail(rawEmail);
     const role = validateRole(rawRole);
     const email = rawEmail.toLowerCase();
+
+    // Enforce admin restriction: admins can only invite User-role accounts
+    const actorRole = rawUserRole.toLowerCase() as Role;
+    const inviteRole = role.toLowerCase() as Role;
+    const inviteRestriction = checkCanManageInvite(actorRole, inviteRole);
+    if (!inviteRestriction.allowed) {
+      throw new InviteError({
+        code: InviteErrorCode.FORBIDDEN,
+        message: `Admin restriction: ${inviteRestriction.message}`,
+        userMessage:
+          inviteRestriction.message ??
+          "You do not have permission to invite users with this role.",
+        httpStatus: 403,
+        retryable: false,
+      });
+    }
 
     const supabase = getSupabaseAdmin();
 

@@ -63,3 +63,13 @@ export interface OperationResult<T = void> {
   data?: T;
   error?: string;
 }
+
+/** The two fields that can be toggled on a module × role combination. */
+export type PermissionKeyField = 'featureAccess' | 'settingsAccess';
+
+/**
+ * Dot-notation key that uniquely identifies one permission field for a module.
+ * Format: "<module-id>.<field>"
+ * Examples: "user-management.featureAccess", "integrations.settingsAccess"
+ */
+export type PermissionKey = `${string}.${PermissionKeyField}`;

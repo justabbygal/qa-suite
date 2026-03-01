@@ -134,3 +134,119 @@ describe('PermissionToggle – visual state', () => {
     expect(thumb).toHaveClass('translate-x-1');
   });
 });
+
+// ---------------------------------------------------------------------------
+// Two-layer API
+// ---------------------------------------------------------------------------
+
+function renderTwoLayer(props?: Partial<Parameters<typeof PermissionToggle>[0]>) {
+  const onFeatureChange = jest.fn();
+  const onSettingsChange = jest.fn();
+  const utils = render(
+    <PermissionToggle
+      featureEnabled={false}
+      settingsEnabled={false}
+      onFeatureChange={onFeatureChange}
+      onSettingsChange={onSettingsChange}
+      {...props}
+    />
+  );
+  return { ...utils, onFeatureChange, onSettingsChange };
+}
+
+describe('PermissionToggle – two-layer rendering', () => {
+  it('renders Feature Access and Settings Access switches', () => {
+    renderTwoLayer();
+    expect(screen.getByRole('switch', { name: 'Feature Access' })).toBeInTheDocument();
+    expect(screen.getByRole('switch', { name: 'Settings Access' })).toBeInTheDocument();
+  });
+
+  it('hides Settings Access switch when hasSettings is false', () => {
+    renderTwoLayer({ hasSettings: false });
+    expect(screen.queryByRole('switch', { name: 'Settings Access' })).not.toBeInTheDocument();
+  });
+
+  it('reflects featureEnabled on Feature Access switch', () => {
+    renderTwoLayer({ featureEnabled: true });
+    expect(screen.getByRole('switch', { name: 'Feature Access' })).toHaveAttribute('aria-checked', 'true');
+  });
+
+  it('disables Settings Access switch when featureEnabled is false', () => {
+    renderTwoLayer({ featureEnabled: false });
+    expect(screen.getByRole('switch', { name: 'Settings Access' })).toBeDisabled();
+  });
+
+  it('enables Settings Access switch when featureEnabled is true', () => {
+    renderTwoLayer({ featureEnabled: true, settingsEnabled: false });
+    expect(screen.getByRole('switch', { name: 'Settings Access' })).not.toBeDisabled();
+  });
+
+  it('shows Settings as OFF when featureEnabled is false, regardless of settingsEnabled', () => {
+    renderTwoLayer({ featureEnabled: false, settingsEnabled: true });
+    expect(screen.getByRole('switch', { name: 'Settings Access' })).toHaveAttribute('aria-checked', 'false');
+  });
+
+  it('respects custom featureLabel', () => {
+    renderTwoLayer({ featureLabel: 'Can Use Module' });
+    expect(screen.getByRole('switch', { name: 'Can Use Module' })).toBeInTheDocument();
+  });
+
+  it('respects custom settingsLabel', () => {
+    renderTwoLayer({ settingsLabel: 'Can Configure' });
+    expect(screen.getByRole('switch', { name: 'Can Configure' })).toBeInTheDocument();
+  });
+
+  it('disables both switches when disabled prop is true', () => {
+    renderTwoLayer({ featureEnabled: true, settingsEnabled: true, disabled: true });
+    expect(screen.getByRole('switch', { name: 'Feature Access' })).toBeDisabled();
+    expect(screen.getByRole('switch', { name: 'Settings Access' })).toBeDisabled();
+  });
+});
+
+describe('PermissionToggle – two-layer interaction', () => {
+  it('calls onFeatureChange(true) when Feature toggled from OFF to ON', async () => {
+    const user = userEvent.setup();
+    const { onFeatureChange } = renderTwoLayer({ featureEnabled: false });
+
+    await user.click(screen.getByRole('switch', { name: 'Feature Access' }));
+
+    expect(onFeatureChange).toHaveBeenCalledTimes(1);
+    expect(onFeatureChange).toHaveBeenCalledWith(true);
+  });
+
+  it('calls onFeatureChange(false) when Feature toggled from ON to OFF (no warning)', async () => {
+    const user = userEvent.setup();
+    const { onFeatureChange } = renderTwoLayer({
+      featureEnabled: true,
+      featureWarningInfo: null,
+    });
+
+    await user.click(screen.getByRole('switch', { name: 'Feature Access' }));
+
+    expect(onFeatureChange).toHaveBeenCalledWith(false);
+  });
+
+  it('calls onSettingsChange(true) when Settings toggled from OFF to ON', async () => {
+    const user = userEvent.setup();
+    const { onSettingsChange } = renderTwoLayer({
+      featureEnabled: true,
+      settingsEnabled: false,
+    });
+
+    await user.click(screen.getByRole('switch', { name: 'Settings Access' }));
+
+    expect(onSettingsChange).toHaveBeenCalledWith(true);
+  });
+
+  it('does not call onSettingsChange when featureEnabled is false', async () => {
+    const user = userEvent.setup();
+    const { onSettingsChange } = renderTwoLayer({
+      featureEnabled: false,
+      settingsEnabled: false,
+    });
+
+    await user.click(screen.getByRole('switch', { name: 'Settings Access' }));
+
+    expect(onSettingsChange).not.toHaveBeenCalled();
+  });
+});

@@ -1,5 +1,12 @@
-import type { Role, ResolvedPermission, PermissionOverride } from "./types";
+import type {
+  Role,
+  ResolvedPermission,
+  PermissionOverride,
+  PermissionKey,
+  PermissionKeyField,
+} from "./types";
 import { getModule } from "./registry";
+import type { RegisteredModule, Role as ModuleRole } from "@/lib/modules/types";
 
 /** Numeric privilege level for each role. Higher = more privileged. */
 const ROLE_LEVELS: Record<Role, number> = {
@@ -95,4 +102,118 @@ export function shouldShowElement(
     return permission.canConfigure;
   }
   return permission.canUse;
+}
+
+// ---------------------------------------------------------------------------
+// Dynamic module resolution (database-backed)
+// ---------------------------------------------------------------------------
+
+/**
+ * Converts a lowercase service Role ("owner" | "admin" | "user") to the
+ * capitalized variant used as keys in RegisteredModule.permissions.
+ */
+function toModuleRole(role: Role): ModuleRole {
+  return (role.charAt(0).toUpperCase() + role.slice(1)) as ModuleRole;
+}
+
+/**
+ * Resolves the effective permission for a role on a module using a list of
+ * RegisteredModule objects loaded from the database, rather than the
+ * in-memory registry.
+ *
+ * This is the preferred resolution path when modules have been fetched from
+ * the database, as it reflects any org-level permission overrides stored
+ * in the modules table. Org-level overrides (e.g. from a separate overrides
+ * table) still take precedence when provided.
+ *
+ * @param role      - The user's role (lowercase).
+ * @param moduleId  - The module's kebab-case identifier (e.g. "user-management").
+ * @param modules   - Registered modules loaded for the current organization.
+ * @param overrides - Optional org-level permission overrides to check first.
+ * @returns The resolved permission. Defaults to no access for unregistered modules.
+ */
+export function resolvePermissionFromModules(
+  role: Role,
+  moduleId: string,
+  modules: RegisteredModule[],
+  overrides: PermissionOverride[] = []
+): ResolvedPermission {
+  // Org-level overrides take precedence.
+  const override = overrides.find(
+    (o) => o.module === moduleId && o.role === role
+  );
+  if (override) {
+    return {
+      canUse: override.featureAccess,
+      canConfigure: override.featureAccess && override.settingsAccess,
+    };
+  }
+
+  // Find the module by its kebab-case identifier.
+  const registeredModule = modules.find((m) => m.module === moduleId);
+  if (!registeredModule) {
+    return { canUse: false, canConfigure: false };
+  }
+
+  const capRole = toModuleRole(role);
+  const access = registeredModule.permissions[capRole];
+  if (!access) {
+    return { canUse: false, canConfigure: false };
+  }
+
+  return {
+    canUse: access.featureAccess,
+    canConfigure: access.featureAccess && access.settingsAccess,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Dot-notation permission key utilities
+// ---------------------------------------------------------------------------
+
+/**
+ * Parses a dot-notation permission key into its constituent parts.
+ *
+ * @param key - A key in the format "module-id.featureAccess" or
+ *              "module-id.settingsAccess".
+ * @returns An object with `moduleId` and `field`.
+ *
+ * @example
+ *   parsePermissionKey("user-management.featureAccess")
+ *   // → { moduleId: "user-management", field: "featureAccess" }
+ */
+export function parsePermissionKey(key: PermissionKey): {
+  moduleId: string;
+  field: PermissionKeyField;
+} {
+  const lastDot = key.lastIndexOf(".");
+  return {
+    moduleId: key.slice(0, lastDot),
+    field: key.slice(lastDot + 1) as PermissionKeyField,
+  };
+}
+
+/**
+ * Checks a single permission using a dot-notation key against a list of
+ * database-loaded modules.
+ *
+ * @param key      - Dot-notation key, e.g. "user-management.featureAccess".
+ * @param role     - The user's role (lowercase).
+ * @param modules  - Registered modules for the current organization.
+ * @param overrides - Optional org-level overrides (checked first).
+ * @returns `true` if the role has the specified access, `false` otherwise.
+ *
+ * @example
+ *   checkPermissionByKey("integrations.settingsAccess", "admin", modules)
+ *   // → false (admin cannot configure integrations settings)
+ */
+export function checkPermissionByKey(
+  key: PermissionKey,
+  role: Role,
+  modules: RegisteredModule[],
+  overrides: PermissionOverride[] = []
+): boolean {
+  const { moduleId, field } = parsePermissionKey(key);
+  const resolved = resolvePermissionFromModules(role, moduleId, modules, overrides);
+  return field === "featureAccess" ? resolved.canUse : resolved.canConfigure;
 }

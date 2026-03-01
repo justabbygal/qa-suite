@@ -1,5 +1,6 @@
 import type { OrgUser, Role, OperationResult } from "./types";
 import { canManageUser, canAssignRole } from "./service";
+import { filterViewableUsers } from "@/lib/services/admin-restrictions";
 
 /**
  * Validates and processes an invitation to a new user with a given role.
@@ -82,9 +83,10 @@ export function removeUser(
 }
 
 /**
- * Returns all users in the actor's organization.
- * All authenticated roles have visibility into the org's user list.
+ * Returns users in the actor's organization that the actor is permitted to see.
+ * Owners see all other members. Admins see only User-role members.
  */
 export function listUsers(actor: OrgUser, users: OrgUser[]): OrgUser[] {
-  return users.filter((u) => u.organizationId === actor.organizationId);
+  const orgUsers = users.filter((u) => u.organizationId === actor.organizationId);
+  return filterViewableUsers(actor.id, actor.role, orgUsers);
 }
