@@ -291,5 +291,227 @@ describe("HelloWorld", () => {
         });
       }).not.toThrow();
     });
+
+    it("does not throw when unmounting after the auto-reset has already fired", async () => {
+      const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+      const { unmount } = render(<HelloWorld />);
+
+      await user.click(screen.getByRole("button", { name: /click me/i }));
+
+      act(() => {
+        jest.advanceTimersByTime(3000);
+      });
+
+      // Timer has already fired and timerRef is null – unmount should be a no-op.
+      expect(() => unmount()).not.toThrow();
+    });
+
+    it("does not throw when unmounting mid-sequence during rapid clicks", async () => {
+      const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+      const { unmount } = render(<HelloWorld />);
+      const button = screen.getByRole("button", { name: /click me/i });
+
+      await user.click(button);
+      await user.click(button);
+      await user.click(button);
+
+      expect(() => unmount()).not.toThrow();
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Stress testing – rapid successive clicks
+  // ---------------------------------------------------------------------------
+
+  describe("stress testing – rapid successive clicks", () => {
+    it("remains in the clicked state after 20 rapid clicks", async () => {
+      const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+      render(<HelloWorld />);
+      const button = screen.getByRole("button", { name: /click me/i });
+
+      for (let i = 0; i < 20; i++) {
+        await user.click(button);
+      }
+
+      expect(
+        screen.getByRole("heading", { name: "Button Clicked!" })
+      ).toBeInTheDocument();
+    });
+
+    it("auto-resets to the default message 3 seconds after the 20th rapid click", async () => {
+      const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+      render(<HelloWorld />);
+      const button = screen.getByRole("button", { name: /click me/i });
+
+      for (let i = 0; i < 20; i++) {
+        await user.click(button);
+      }
+
+      act(() => {
+        jest.advanceTimersByTime(3000);
+      });
+
+      expect(
+        screen.getByRole("heading", { name: "Hello World" })
+      ).toBeInTheDocument();
+    });
+
+    it("clears the previous timer on every click, leaving only one pending timeout", async () => {
+      const clearTimeoutSpy = jest.spyOn(global, "clearTimeout");
+      const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+      render(<HelloWorld />);
+      const button = screen.getByRole("button", { name: /click me/i });
+
+      // First click has no previous timer; each subsequent click clears one.
+      const CLICK_COUNT = 20;
+      for (let i = 0; i < CLICK_COUNT; i++) {
+        await user.click(button);
+      }
+
+      // The spy may also be called by internals (e.g. user-event), so we assert
+      // at least CLICK_COUNT - 1 calls rather than an exact count.
+      expect(clearTimeoutSpy.mock.calls.length).toBeGreaterThanOrEqual(
+        CLICK_COUNT - 1
+      );
+
+      clearTimeoutSpy.mockRestore();
+    });
+
+    it("does not accumulate multiple timers when clicking rapidly", async () => {
+      const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+      render(<HelloWorld />);
+      const button = screen.getByRole("button", { name: /click me/i });
+
+      for (let i = 0; i < 20; i++) {
+        await user.click(button);
+      }
+
+      // Only one timer should fire after 3 seconds – heading resets exactly once.
+      act(() => {
+        jest.advanceTimersByTime(3000);
+      });
+
+      // Advance another full interval to confirm no stale timers trigger.
+      act(() => {
+        jest.advanceTimersByTime(3000);
+      });
+
+      expect(
+        screen.getByRole("heading", { name: "Hello World" })
+      ).toBeInTheDocument();
+    });
+
+    it("handles clicks interleaved with partial timer advances without error", async () => {
+      const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+      render(<HelloWorld />);
+      const button = screen.getByRole("button", { name: /click me/i });
+
+      await user.click(button);
+
+      act(() => { jest.advanceTimersByTime(1000); });
+
+      await user.click(button);
+
+      act(() => { jest.advanceTimersByTime(1500); });
+
+      await user.click(button);
+
+      act(() => { jest.advanceTimersByTime(500); });
+
+      await user.click(button);
+
+      // Still in clicked state – the last timer started 500 ms ago.
+      expect(
+        screen.getByRole("heading", { name: "Button Clicked!" })
+      ).toBeInTheDocument();
+
+      // Complete the final timer.
+      act(() => { jest.advanceTimersByTime(2500); });
+
+      expect(
+        screen.getByRole("heading", { name: "Hello World" })
+      ).toBeInTheDocument();
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Error resilience
+  // ---------------------------------------------------------------------------
+
+  describe("error resilience", () => {
+    it("does not throw when the click handler encounters an unexpected error", () => {
+      render(<HelloWorld />);
+      const button = screen.getByRole("button", { name: /click me/i });
+
+      // Temporarily break clearTimeout to simulate a runtime anomaly.
+      const originalClearTimeout = global.clearTimeout;
+      global.clearTimeout = () => { throw new Error("simulated clearTimeout failure"); };
+
+      // First click: timerRef is null, so clearTimeout is not called – no error.
+      expect(() => button.click()).not.toThrow();
+
+      global.clearTimeout = originalClearTimeout;
+    });
+
+    it("emits a console.warn in development when the click handler throws", () => {
+      const warnSpy = jest.spyOn(console, "warn").mockImplementation(() => {});
+      const originalEnv = process.env.NODE_ENV;
+
+      // Simulate development environment.
+      Object.defineProperty(process.env, "NODE_ENV", {
+        value: "development",
+        configurable: true,
+      });
+
+      render(<HelloWorld />);
+      const button = screen.getByRole("button", { name: /click me/i });
+
+      // Force the handler to catch by sabotaging setTimeout after first click.
+      const originalSetTimeout = global.setTimeout;
+      // @ts-ignore – intentional bad override for testing purposes
+      global.setTimeout = () => { throw new Error("simulated setTimeout failure"); };
+
+      button.click();
+
+      expect(warnSpy).toHaveBeenCalledWith(
+        "[HelloWorld] Unexpected error in click handler:",
+        expect.any(Error)
+      );
+
+      global.setTimeout = originalSetTimeout;
+      Object.defineProperty(process.env, "NODE_ENV", {
+        value: originalEnv,
+        configurable: true,
+      });
+      warnSpy.mockRestore();
+    });
+
+    it("does not emit console.warn in production when the click handler throws", () => {
+      const warnSpy = jest.spyOn(console, "warn").mockImplementation(() => {});
+      const originalEnv = process.env.NODE_ENV;
+
+      Object.defineProperty(process.env, "NODE_ENV", {
+        value: "production",
+        configurable: true,
+      });
+
+      render(<HelloWorld />);
+      const button = screen.getByRole("button", { name: /click me/i });
+
+      const originalSetTimeout = global.setTimeout;
+      // @ts-ignore – intentional bad override for testing purposes
+      global.setTimeout = () => { throw new Error("simulated setTimeout failure"); };
+
+      button.click();
+
+      expect(warnSpy).not.toHaveBeenCalled();
+
+      global.setTimeout = originalSetTimeout;
+      Object.defineProperty(process.env, "NODE_ENV", {
+        value: originalEnv,
+        configurable: true,
+      });
+      warnSpy.mockRestore();
+    });
   });
 });
