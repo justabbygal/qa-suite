@@ -19,6 +19,7 @@ import {
   DatabaseError,
   toInviteError,
 } from "@/lib/errors/invite-errors";
+import { logAuditEventFireAndForget } from "@/lib/audit/logger";
 
 function getSupabaseAdmin() {
   return createClient(
@@ -129,6 +130,23 @@ export async function DELETE(
     if (deleteErr) {
       throw new DatabaseError("cancel invite", new Error(deleteErr.message));
     }
+
+    logAuditEventFireAndForget({
+      organization_id: organizationId,
+      actor_id: userId,
+      actor_email: userId,
+      actor_name: userId,
+      action: "invite.cancel",
+      resource_type: "invitation",
+      resource_id: params.id,
+      resource_name: invite.id,
+      changes: null,
+      ip_address:
+        request.headers.get("x-forwarded-for") ??
+        request.headers.get("x-real-ip") ??
+        null,
+      user_agent: request.headers.get("user-agent") ?? null,
+    });
 
     return NextResponse.json({
       data: { message: "Invitation cancelled successfully." },

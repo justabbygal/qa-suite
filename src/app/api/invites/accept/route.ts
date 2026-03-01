@@ -1,28 +1,29 @@
 /**
- * POST /api/invites/[id]/accept
+ * POST /api/invites/accept
  *
- * Validates an invite token and marks the invitation as used.
- * This endpoint is public (no auth header required) — the token itself
- * acts as the credential.
+ * Token-only invite acceptance endpoint. This is the route called when a user
+ * clicks the link from their invitation email (format: /invite/{token}).
+ *
+ * Unlike POST /api/invites/[id]/accept, this endpoint requires only the
+ * invitation token — no invite ID is needed. This matches the URL pattern
+ * used in email links where the token alone is the credential.
  *
  * Body: { token: string }
  *
- * On success, the caller receives the invite's role and organization so the
- * auth layer can complete account creation / org membership.
+ * This endpoint is public (no auth header required). On success, the caller
+ * receives the invite data needed for Better Auth to complete account creation
+ * and organisation membership assignment.
  */
 
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import {
   InviteError,
-  InviteNotFoundError,
-  InviteExpiredError,
-  InviteAlreadyUsedError,
-  DatabaseError,
   toInviteError,
 } from "@/lib/errors/invite-errors";
 import { inviteMonitor } from "@/lib/invite-monitor";
 import { logAuditEventFireAndForget } from "@/lib/audit/logger";
+import { acceptInviteByToken } from "@/lib/invites";
 
 function getSupabaseAdmin() {
   return createClient(
@@ -31,10 +32,7 @@ function getSupabaseAdmin() {
   );
 }
 
-export async function POST(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-): Promise<NextResponse> {
+export async function POST(request: NextRequest): Promise<NextResponse> {
   try {
     // Parse body
     let body: { token?: unknown };
@@ -61,7 +59,8 @@ export async function POST(
           error: {
             code: "INVALID_REQUEST",
             message: "Missing required field: token",
-            userMessage: "An invitation token is required to accept this invitation.",
+            userMessage:
+              "An invitation token is required to accept this invitation.",
             retryable: false,
           },
         },
@@ -70,52 +69,22 @@ export async function POST(
     }
 
     const supabase = getSupabaseAdmin();
-
-    // Fetch the invite — deliberately avoid leaking whether the id or the
-    // token is wrong by returning the same 404 in both cases.
-    const { data: invite, error: fetchErr } = await supabase
-      .from("invitations")
-      .select("id, email, role, organization_id, expires_at, used_at, token")
-      .eq("id", params.id)
-      .single();
-
-    if (fetchErr || !invite || invite.token !== token) {
-      throw new InviteNotFoundError(params.id);
-    }
-
-    // Guard: already used
-    if (invite.used_at) {
-      throw new InviteAlreadyUsedError();
-    }
-
-    // Guard: expired
-    if (new Date(invite.expires_at) < new Date()) {
-      throw new InviteExpiredError();
-    }
-
-    // Mark as accepted
-    const { error: updateErr } = await supabase
-      .from("invitations")
-      .update({ used_at: new Date().toISOString() })
-      .eq("id", params.id);
-
-    if (updateErr) {
-      throw new DatabaseError("accept invite", new Error(updateErr.message));
-    }
+    const result = await acceptInviteByToken(supabase, { token });
 
     inviteMonitor.recordInviteAccepted();
 
     // Audit log — actor is the invitee (pre-registration, use email as identifier).
-    // Once Better Auth creates the user account, the actor_id should be updated.
+    // Once Better Auth creates the user account, the actor_id should be updated
+    // to reference the actual user record.
     logAuditEventFireAndForget({
-      organization_id: invite.organization_id,
-      actor_id: invite.email,
-      actor_email: invite.email,
-      actor_name: invite.email,
+      organization_id: result.organizationId,
+      actor_id: result.email,
+      actor_email: result.email,
+      actor_name: result.email,
       action: "invite.accept",
       resource_type: "invitation",
-      resource_id: invite.id,
-      resource_name: invite.email,
+      resource_id: result.inviteId,
+      resource_name: result.email,
       changes: null,
       ip_address:
         request.headers.get("x-forwarded-for") ??
@@ -128,9 +97,9 @@ export async function POST(
       data: {
         message: "Invitation accepted successfully.",
         invite: {
-          email: invite.email,
-          role: invite.role,
-          organizationId: invite.organization_id,
+          email: result.email,
+          role: result.role,
+          organizationId: result.organizationId,
         },
       },
     });
@@ -143,7 +112,6 @@ export async function POST(
           ts: new Date().toISOString(),
           service: "invites-api",
           event: "accept_error",
-          inviteId: params.id,
           error: ie.message,
         })
       );

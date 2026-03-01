@@ -24,6 +24,7 @@ import {
 } from "@/lib/errors/invite-errors";
 import { inviteMonitor } from "@/lib/invite-monitor";
 import { withRetry } from "@/lib/email/retry";
+import { logAuditEventFireAndForget } from "@/lib/audit/logger";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -173,6 +174,23 @@ export async function POST(
         })
       );
     }
+
+    logAuditEventFireAndForget({
+      organization_id: organizationId,
+      actor_id: userId,
+      actor_email: userId,
+      actor_name: userId,
+      action: "invite.resend",
+      resource_type: "invitation",
+      resource_id: updated.id,
+      resource_name: updated.email,
+      changes: null,
+      ip_address:
+        request.headers.get("x-forwarded-for") ??
+        request.headers.get("x-real-ip") ??
+        null,
+      user_agent: request.headers.get("user-agent") ?? null,
+    });
 
     return NextResponse.json({
       data: {
