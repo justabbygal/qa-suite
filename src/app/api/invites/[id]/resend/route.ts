@@ -16,20 +16,14 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import {
   InviteError,
-  InviteNotFoundError,
   UnauthorizedError,
   ForbiddenError,
-  DatabaseError,
   toInviteError,
 } from "@/lib/errors/invite-errors";
 import { inviteMonitor } from "@/lib/invite-monitor";
 import { withRetry } from "@/lib/email/retry";
-
-// ---------------------------------------------------------------------------
-// Constants
-// ---------------------------------------------------------------------------
-
-const INVITE_EXPIRY_DAYS = 7;
+import { logAuditEventFireAndForget } from "@/lib/audit/logger";
+import { getInviteById, resendInvite, sendInviteEmail } from "@/lib/invites";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -40,55 +34,6 @@ function getSupabaseAdmin() {
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   );
-}
-
-function generateToken(): string {
-  const buf = new Uint8Array(32);
-  crypto.getRandomValues(buf);
-  return Array.from(buf, (b) => b.toString(16).padStart(2, "0")).join("");
-}
-
-async function sendInviteEmail(
-  email: string,
-  token: string,
-  inviterName: string
-): Promise<void> {
-  if (!process.env.RESEND_API_KEY) {
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
-    console.log(
-      JSON.stringify({
-        ts: new Date().toISOString(),
-        service: "invite-email",
-        event: "dev_fallback",
-        to: email,
-        inviteUrl: `${appUrl}/invite/${token}`,
-        invitedBy: inviterName,
-      })
-    );
-    return;
-  }
-
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
-  const res = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      from: process.env.EMAIL_FROM ?? "noreply@qa-suite.app",
-      to: email,
-      subject: `You've been invited to join QA Suite`,
-      html: `<p><strong>${inviterName}</strong> has invited you to join the QA Suite workspace.</p>
-             <p><a href="${appUrl}/invite/${token}">Accept invitation</a></p>
-             <p>This link expires in ${INVITE_EXPIRY_DAYS} days.</p>`,
-    }),
-  });
-
-  if (!res.ok) {
-    const body = await res.text().catch(() => "");
-    throw new Error(`Resend API ${res.status}: ${body}`);
-  }
 }
 
 // ---------------------------------------------------------------------------

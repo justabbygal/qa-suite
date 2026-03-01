@@ -13,12 +13,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import {
   InviteError,
-  InviteNotFoundError,
   UnauthorizedError,
   ForbiddenError,
-  DatabaseError,
   toInviteError,
 } from "@/lib/errors/invite-errors";
+import { logAuditEventFireAndForget } from "@/lib/audit/logger";
+import { cancelInvite, getInviteById } from "@/lib/invites";
 
 function getSupabaseAdmin() {
   return createClient(
@@ -44,26 +44,12 @@ export async function GET(
     }
 
     const supabase = getSupabaseAdmin();
+    const invite = await getInviteById(supabase, {
+      inviteId: params.id,
+      organizationId,
+    });
 
-    const { data: invite, error } = await supabase
-      .from("invitations")
-      .select("id, email, role, invited_by, expires_at, used_at, created_at")
-      .eq("id", params.id)
-      .eq("organization_id", organizationId)
-      .single();
-
-    if (error || !invite) {
-      throw new InviteNotFoundError(params.id);
-    }
-
-    const now = new Date();
-    const status = invite.used_at
-      ? "accepted"
-      : new Date(invite.expires_at) < now
-        ? "expired"
-        : "pending";
-
-    return NextResponse.json({ data: { invite: { ...invite, status } } });
+    return NextResponse.json({ data: { invite } });
   } catch (error) {
     const ie = toInviteError(error);
 
@@ -107,28 +93,27 @@ export async function DELETE(
     }
 
     const supabase = getSupabaseAdmin();
+    const cancelled = await cancelInvite(supabase, {
+      inviteId: params.id,
+      organizationId,
+    });
 
-    // Confirm the invite exists within this organisation before deleting
-    const { data: invite, error: fetchErr } = await supabase
-      .from("invitations")
-      .select("id")
-      .eq("id", params.id)
-      .eq("organization_id", organizationId)
-      .single();
-
-    if (fetchErr || !invite) {
-      throw new InviteNotFoundError(params.id);
-    }
-
-    const { error: deleteErr } = await supabase
-      .from("invitations")
-      .delete()
-      .eq("id", params.id)
-      .eq("organization_id", organizationId);
-
-    if (deleteErr) {
-      throw new DatabaseError("cancel invite", new Error(deleteErr.message));
-    }
+    logAuditEventFireAndForget({
+      organization_id: organizationId,
+      actor_id: userId,
+      actor_email: userId,
+      actor_name: userId,
+      action: "invite.cancel",
+      resource_type: "invitation",
+      resource_id: cancelled.id,
+      resource_name: cancelled.email,
+      changes: null,
+      ip_address:
+        request.headers.get("x-forwarded-for") ??
+        request.headers.get("x-real-ip") ??
+        null,
+      user_agent: request.headers.get("user-agent") ?? null,
+    });
 
     return NextResponse.json({
       data: { message: "Invitation cancelled successfully." },
