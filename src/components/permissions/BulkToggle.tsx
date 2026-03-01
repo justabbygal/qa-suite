@@ -176,6 +176,7 @@ export function BulkToggle({
         <ConfirmationDialog
           open={dialogOpen}
           warning={warningInfo}
+          confirmLabel="Disable Module"
           onConfirm={() => {
             setDialogOpen(false);
             onBulkChange(module.id, false);

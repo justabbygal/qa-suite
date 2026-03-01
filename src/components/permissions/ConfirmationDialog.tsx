@@ -21,6 +21,12 @@ export interface ConfirmationDialogProps {
   onConfirm: () => void;
   /** Called when the user cancels — no change should be applied. */
   onCancel: () => void;
+  /**
+   * Label for the confirm (destructive) button.
+   * Defaults to "Remove Access" — override for bulk or non-access changes
+   * (e.g. "Disable Module").
+   */
+  confirmLabel?: string;
 }
 
 /**
@@ -39,6 +45,7 @@ export function ConfirmationDialog({
   warning,
   onConfirm,
   onCancel,
+  confirmLabel = 'Remove Access',
 }: ConfirmationDialogProps) {
   // Allow Enter to confirm while the dialog is open.
   React.useEffect(() => {
@@ -87,7 +94,7 @@ export function ConfirmationDialog({
             onClick={onConfirm}
             className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
           >
-            Remove Access
+            {confirmLabel}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
