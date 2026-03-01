@@ -1,4 +1,4 @@
-﻿export interface User {
+export interface User {
   id: string;
   email: string;
   name: string;
@@ -43,4 +43,21 @@ export interface TestRun {
   startedAt?: string;
   completedAt?: string;
   notes?: string;
+}
+
+export type InviteRole = "Owner" | "Admin" | "User";
+export type InviteStatus = "pending" | "accepted" | "expired" | "cancelled";
+
+export interface Invite {
+  id: string;
+  email: string;
+  role: InviteRole;
+  organizationId: string;
+  token: string;
+  status: InviteStatus;
+  expiresAt: string;
+  invitedBy: string;
+  invitedByEmail: string;
+  createdAt: string;
+  updatedAt: string;
 }

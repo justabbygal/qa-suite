@@ -1,0 +1,178 @@
+"use client";
+
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useRef,
+  useState,
+} from "react";
+import * as ToastPrimitive from "@radix-ui/react-toast";
+
+import type { RegisteredModule } from "@/lib/modules/types";
+import type { Role } from "@/lib/modules/types";
+import {
+  usePermissionState,
+  type UsePermissionStateReturn,
+} from "@/hooks/usePermissions";
+import type {
+  BulkUpdateItem,
+  BulkUpdateResult,
+  PermissionField,
+} from "@/lib/utils/permission-state";
+
+// ---------------------------------------------------------------------------
+// Toast types
+// ---------------------------------------------------------------------------
+
+interface ToastEntry {
+  id: string;
+  type: "success" | "error";
+  message: string;
+}
+
+// ---------------------------------------------------------------------------
+// Context
+// ---------------------------------------------------------------------------
+
+interface PermissionContextValue extends UsePermissionStateReturn {
+  /** Fire a toast notification directly from any child component. */
+  addToast: (type: "success" | "error", message: string) => void;
+}
+
+const PermissionContext = createContext<PermissionContextValue | null>(null);
+
+// ---------------------------------------------------------------------------
+// Provider
+// ---------------------------------------------------------------------------
+
+export interface PermissionProviderProps {
+  organizationId: string;
+  children: React.ReactNode;
+}
+
+export function PermissionProvider({
+  organizationId,
+  children,
+}: PermissionProviderProps) {
+  const [toasts, setToasts] = useState<ToastEntry[]>([]);
+  const idCounter = useRef(0);
+
+  const addToast = useCallback(
+    (type: "success" | "error", message: string) => {
+      const id = String(++idCounter.current);
+      setToasts((prev) => [...prev, { id, type, message }]);
+      // Remove after the Radix animation completes (duration + 500 ms buffer).
+      setTimeout(() => {
+        setToasts((prev) => prev.filter((t) => t.id !== id));
+      }, 5500);
+    },
+    []
+  );
+
+  const permissionsState = usePermissionState({
+    organizationId,
+    onToast: addToast,
+  });
+
+  const dismissToast = useCallback((id: string) => {
+    setToasts((prev) => prev.filter((t) => t.id !== id));
+  }, []);
+
+  return (
+    <PermissionContext.Provider value={{ ...permissionsState, addToast }}>
+      <ToastPrimitive.Provider swipeDirection="right">
+        {children}
+
+        {toasts.map((toast) => (
+          <ToastPrimitive.Root
+            key={toast.id}
+            open
+            onOpenChange={(open) => {
+              if (!open) dismissToast(toast.id);
+            }}
+            duration={5000}
+            className={[
+              "pointer-events-auto flex items-center justify-between gap-4",
+              "rounded-md border px-4 py-3 shadow-lg",
+              "data-[state=open]:animate-in data-[state=open]:fade-in-0",
+              "data-[state=open]:slide-in-from-right-4",
+              "data-[state=closed]:animate-out data-[state=closed]:fade-out-0",
+              "data-[state=closed]:slide-out-to-right-4",
+              toast.type === "success"
+                ? "border-border bg-background text-foreground"
+                : "border-destructive/30 bg-destructive/10 text-destructive",
+            ].join(" ")}
+          >
+            <ToastPrimitive.Title className="text-sm font-medium">
+              <span className="mr-1.5" aria-hidden="true">
+                {toast.type === "success" ? "✓" : "✕"}
+              </span>
+              {toast.message}
+            </ToastPrimitive.Title>
+
+            <ToastPrimitive.Close
+              aria-label="Dismiss notification"
+              className="rounded p-0.5 opacity-60 transition-opacity hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 14 14"
+                fill="none"
+                aria-hidden="true"
+              >
+                <path
+                  d="M1 1l12 12M13 1L1 13"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                />
+              </svg>
+            </ToastPrimitive.Close>
+          </ToastPrimitive.Root>
+        ))}
+
+        <ToastPrimitive.Viewport
+          aria-label="Notifications"
+          className={[
+            "fixed bottom-4 right-4 z-[100]",
+            "flex flex-col gap-2",
+            "w-[360px] max-w-[calc(100vw-2rem)]",
+            "outline-none",
+          ].join(" ")}
+        />
+      </ToastPrimitive.Provider>
+    </PermissionContext.Provider>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Consumer hook
+// ---------------------------------------------------------------------------
+
+/**
+ * Returns permission state and mutation helpers from the nearest
+ * PermissionProvider. Must be rendered inside a PermissionProvider.
+ */
+export function usePermissionContext(): PermissionContextValue {
+  const ctx = useContext(PermissionContext);
+  if (!ctx) {
+    throw new Error(
+      "usePermissionContext must be used within a <PermissionProvider>"
+    );
+  }
+  return ctx;
+}
+
+// ---------------------------------------------------------------------------
+// Re-exports for child component convenience
+// ---------------------------------------------------------------------------
+
+export type {
+  RegisteredModule,
+  Role,
+  PermissionField,
+  BulkUpdateItem,
+  BulkUpdateResult,
+};
