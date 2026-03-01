@@ -26,6 +26,12 @@ import { hasAtLeastRole } from "@/lib/permissions/service";
 import { getModules } from "@/lib/modules/moduleService";
 import type { RegisteredModule } from "@/lib/modules/types";
 import {
+  cacheModules,
+  getCachedModules,
+  invalidateModuleCache,
+  hasPermission as dynamicHasPermission,
+} from "@/lib/services/dynamic-permission-resolver";
+import {
   UnauthorizedError,
   ForbiddenError,
   toUserError,
@@ -113,42 +119,18 @@ export function extractSessionContext(
 // Permission cache
 // ---------------------------------------------------------------------------
 
-interface CacheEntry {
-  modules: RegisteredModule[];
-  expiresAt: number; // Unix ms
-}
-
-/** In-memory cache keyed by organizationId. Resets on cold starts. */
-const permissionCache = new Map<string, CacheEntry>();
-
-/** TTL for cached module permission data. */
-const CACHE_TTL_MS = 30_000; // 30 seconds
-
-function getCachedModules(organizationId: string): RegisteredModule[] | null {
-  const entry = permissionCache.get(organizationId);
-  if (!entry || Date.now() > entry.expiresAt) {
-    permissionCache.delete(organizationId);
-    return null;
-  }
-  return entry.modules;
-}
-
-function setCachedModules(
-  organizationId: string,
-  modules: RegisteredModule[]
-): void {
-  permissionCache.set(organizationId, {
-    modules,
-    expiresAt: Date.now() + CACHE_TTL_MS,
-  });
-}
+/** TTL for cached module permission data used by this middleware. */
+const MIDDLEWARE_CACHE_TTL_MS = 30_000; // 30 seconds
 
 /**
  * Evicts cached module permissions for an organization.
  * Call this after any permission write to ensure guards see fresh data.
+ *
+ * Delegates to the dynamic permission resolver's shared cache so that
+ * cache invalidations are reflected across all permission-check sites.
  */
 export function invalidatePermissionCache(organizationId: string): void {
-  permissionCache.delete(organizationId);
+  invalidateModuleCache(organizationId);
 }
 
 function getSupabaseAdmin() {
@@ -166,7 +148,7 @@ async function fetchModulesForOrg(
 
   const supabase = getSupabaseAdmin();
   const modules = await getModules(supabase, organizationId);
-  setCachedModules(organizationId, modules);
+  cacheModules(organizationId, modules, MIDDLEWARE_CACHE_TTL_MS);
   return modules;
 }
 
@@ -277,8 +259,6 @@ export function requirePermission(
     });
   }
 
-  const requireSettings = field === "settingsAccess";
-
   return async (request: NextRequest): Promise<MiddlewareResult> => {
     const context = extractSessionContext(request);
     if (!context) {
@@ -288,31 +268,24 @@ export function requirePermission(
     try {
       const modules = await fetchModulesForOrg(context.organizationId);
 
-      // Match by module slug first (preferred), then by UUID
-      const registeredModule = modules.find(
-        (m) => m.module === moduleId || m.id === moduleId
-      );
+      // Delegate to the dynamic resolver which handles slug/UUID matching,
+      // in-memory registry fallback, and the settingsAccess constraint.
+      const permKey = `${moduleId}.${field}`;
+      const allowed = dynamicHasPermission(modules, context.role, permKey);
 
-      if (!registeredModule) {
-        return {
-          ok: false,
-          response: forbiddenResponse(
-            `Permission check failed: module '${moduleId}' is not registered for this organization.`
-          ),
-        };
-      }
-
-      // RolePermissions uses capitalized keys (Owner / Admin / User)
-      const capitalizedRole = (context.role.charAt(0).toUpperCase() +
-        context.role.slice(1)) as keyof typeof registeredModule.permissions;
-      const rolePerms = registeredModule.permissions[capitalizedRole];
-
-      // settingsAccess is only meaningful when featureAccess is also on
-      const hasAccess = requireSettings
-        ? rolePerms.featureAccess && rolePerms.settingsAccess
-        : rolePerms.featureAccess;
-
-      if (!hasAccess) {
+      if (!allowed) {
+        // Surface a more specific message when the module itself is not registered.
+        const isRegistered = modules.some(
+          (m) => m.module === moduleId || m.id === moduleId
+        );
+        if (!isRegistered) {
+          return {
+            ok: false,
+            response: forbiddenResponse(
+              `Permission check failed: module '${moduleId}' is not registered for this organization.`
+            ),
+          };
+        }
         return {
           ok: false,
           response: forbiddenResponse(

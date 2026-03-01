@@ -34,12 +34,12 @@ function PermissionsLoadingSkeleton() {
           <CardHeader>
             <div className="h-5 w-40 animate-pulse rounded bg-muted" />
           </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="flex items-center justify-between">
+          <CardContent className="space-y-1">
+            <div className="flex min-h-[44px] items-center justify-between gap-3">
               <div className="h-4 w-32 animate-pulse rounded bg-muted" />
               <div className="h-5 w-9 animate-pulse rounded-full bg-muted" />
             </div>
-            <div className="flex items-center justify-between">
+            <div className="flex min-h-[44px] items-center justify-between gap-3">
               <div className="h-4 w-36 animate-pulse rounded bg-muted" />
               <div className="h-5 w-9 animate-pulse rounded-full bg-muted" />
             </div>
@@ -79,7 +79,7 @@ function PermissionsContent({ selectedRole }: PermissionsContentProps) {
 
   if (modules.length === 0) {
     return (
-      <div className="rounded-lg border border-dashed p-8 text-center">
+      <div className="rounded-lg border border-dashed p-6 text-center sm:p-8">
         <p className="text-sm text-muted-foreground">
           No modules are registered yet. Modules will appear here once they are
           added to the system.
@@ -108,9 +108,9 @@ function PermissionsContent({ selectedRole }: PermissionsContentProps) {
               <CardTitle className="text-base">{mod.displayName}</CardTitle>
               <p className="font-mono text-xs text-muted-foreground">{mod.module}</p>
             </CardHeader>
-            <CardContent className="space-y-3">
+            <CardContent className="space-y-1">
               {/* Feature Access */}
-              <div className="flex items-center justify-between">
+              <div className="flex min-h-[44px] items-center justify-between gap-3">
                 <div>
                   <p className="text-sm font-medium">Feature Access</p>
                   <p className="text-xs text-muted-foreground">
@@ -130,7 +130,7 @@ function PermissionsContent({ selectedRole }: PermissionsContentProps) {
 
               {/* Settings Access — only relevant when module has settings */}
               {mod.hasSettings && (
-                <div className="flex items-center justify-between">
+                <div className="flex min-h-[44px] items-center justify-between gap-3">
                   <div>
                     <p className="text-sm font-medium">Settings Access</p>
                     <p className="text-xs text-muted-foreground">
@@ -175,8 +175,8 @@ export function PermissionLayout({ organizationId }: PermissionLayoutProps) {
   // Access gate — users without permission see a clear denial message
   if (!canAccessPermissions(userRole)) {
     return (
-      <div className="max-w-4xl">
-        <div className="flex flex-col items-center gap-4 rounded-lg border border-dashed p-12 text-center">
+      <div className="w-full max-w-4xl">
+        <div className="flex flex-col items-center gap-4 rounded-lg border border-dashed p-8 text-center sm:p-12">
           <Shield className="h-10 w-10 text-muted-foreground" aria-hidden="true" />
           <div className="space-y-1">
             <h2 className="text-base font-semibold">Access Restricted</h2>
@@ -190,7 +190,7 @@ export function PermissionLayout({ organizationId }: PermissionLayoutProps) {
   }
 
   return (
-    <div className="max-w-4xl space-y-6">
+    <div className="w-full max-w-4xl space-y-6">
       {/* Page header */}
       <div>
         <h2 className="text-lg font-semibold">Permissions</h2>

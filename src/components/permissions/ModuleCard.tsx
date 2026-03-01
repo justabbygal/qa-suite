@@ -25,13 +25,13 @@ export function ModuleCard({ module, onEdit, onDeregister }: ModuleCardProps) {
         </dl>
 
         {(onEdit || onDeregister) && (
-          <div className="mt-4 flex gap-3">
+          <div className="mt-2 flex gap-1">
             {onEdit && (
               <button
                 type="button"
                 onClick={() => onEdit(module)}
                 aria-label={`Edit ${module.displayName}`}
-                className="text-sm text-primary hover:underline"
+                className="inline-flex min-h-[44px] items-center px-2 text-sm text-primary hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
                 Edit
               </button>
@@ -41,7 +41,7 @@ export function ModuleCard({ module, onEdit, onDeregister }: ModuleCardProps) {
                 type="button"
                 onClick={() => onDeregister(module.id)}
                 aria-label={`Deregister ${module.displayName}`}
-                className="text-sm text-destructive hover:underline"
+                className="inline-flex min-h-[44px] items-center px-2 text-sm text-destructive hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
                 Deregister
               </button>
