@@ -183,3 +183,19 @@ export async function getModules(
   if (error || !data) return [];
   return data.map(mapToRegisteredModule);
 }
+
+export async function getModuleByName(
+  supabase: SupabaseClient,
+  moduleName: string,
+  organizationId: string
+): Promise<RegisteredModule | null> {
+  const { data, error } = await supabase
+    .from(TABLE_NAME)
+    .select()
+    .eq('module', moduleName)
+    .eq('organization_id', organizationId)
+    .maybeSingle();
+
+  if (error || !data) return null;
+  return mapToRegisteredModule(data);
+}

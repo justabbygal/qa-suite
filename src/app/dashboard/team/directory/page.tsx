@@ -39,15 +39,11 @@ export default function TeamDirectoryPage() {
   const rawRole = useUserRole();
   const userRole: UserRole = toUserRole(rawRole);
 
-  // TODO: Replace with Better Auth organization context once auth is integrated.
   const [organizationId, setOrganizationId] = useState("");
   const [userId, setUserId] = useState("");
-
   const [profiles, setProfiles] = useState<UserProfile[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
-
-  // Delete confirmation state
   const [profileToDelete, setProfileToDelete] = useState<UserProfile | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
@@ -64,48 +60,35 @@ export default function TeamDirectoryPage() {
     setIsLoading(true);
     setFetchError(null);
     try {
-      const response = await getProfiles({
-        organization_id: organizationId,
-        per_page: 100,
-      });
+      const response = await getProfiles({ organization_id: organizationId, per_page: 100 });
       setProfiles(response.data);
     } catch (err) {
-      setFetchError(
-        err instanceof Error ? err.message : "Failed to load team members",
-      );
+      setFetchError(err instanceof Error ? err.message : "Failed to load team members");
     } finally {
       setIsLoading(false);
     }
   }, [organizationId]);
 
   useEffect(() => {
-    if (organizationId) {
-      loadProfiles();
-    }
+    if (organizationId) loadProfiles();
   }, [organizationId, loadProfiles]);
 
-  const {
-    editState,
-    openEdit,
-    closeEdit,
-    saveProfile,
-    saveEmail,
-    canEditEmailField,
-  } = useProfileEdit({
-    currentUserId: userId,
-    currentUserRole: userRole,
-    organizationId,
-    onSaveSuccess: (updated) => {
-      setProfiles((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
-    },
-  });
+  const { editState, openEdit, closeEdit, saveProfile, saveEmail, canEditEmailField } =
+    useProfileEdit({
+      currentUserId: userId,
+      currentUserRole: userRole,
+      organizationId,
+      onSaveSuccess: (updated) => {
+        setProfiles((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
+      },
+    });
 
   const handleDeleteConfirm = async () => {
     if (!profileToDelete) return;
     setIsDeleting(true);
     setDeleteError(null);
     try {
-      const res = await fetch(`/api/users/${profileToDelete.user_id}`, {
+      const res = await fetch("/api/users/" + profileToDelete.user_id, {
         method: "DELETE",
         headers: {
           "x-user-id": userId,
@@ -130,9 +113,7 @@ export default function TeamDirectoryPage() {
     <div className="flex min-h-screen flex-col">
       <header className="border-b px-6 py-4">
         <Breadcrumb />
-        <h1 className="mt-1 text-2xl font-semibold tracking-tight">
-          Team Directory
-        </h1>
+        <h1 className="mt-1 text-2xl font-semibold tracking-tight">Team Directory</h1>
         <p className="mt-1 text-sm text-muted-foreground">
           Browse and search all members in your organization.
         </p>
@@ -141,16 +122,9 @@ export default function TeamDirectoryPage() {
       <main className="flex-1 p-6" id="directory-content" tabIndex={-1}>
         <div className="mx-auto max-w-5xl">
           {fetchError ? (
-            <div
-              role="alert"
-              className="rounded-lg border border-destructive/50 bg-destructive/10 p-4 text-sm text-destructive"
-            >
-              {fetchError}{" "}
-              <button
-                type="button"
-                onClick={loadProfiles}
-                className="underline hover:no-underline"
-              >
+            <div role="alert" className="rounded-lg border border-destructive/50 bg-destructive/10 p-4 text-sm text-destructive">
+              {fetchError}{' '}
+              <button type="button" onClick={loadProfiles} className="underline hover:no-underline">
                 Try again
               </button>
             </div>
@@ -167,7 +141,6 @@ export default function TeamDirectoryPage() {
         </div>
       </main>
 
-      {/* Edit modal */}
       <ProfileEditModal
         profile={editState.profile}
         open={editState.isOpen}
@@ -182,29 +155,20 @@ export default function TeamDirectoryPage() {
         canEditEmail={canEditEmailField}
       />
 
-      {/* Delete confirmation */}
       <AlertDialog
         open={!!profileToDelete}
-        onOpenChange={(open) => {
-          if (!open) {
-            setProfileToDelete(null);
-            setDeleteError(null);
-          }
-        }}
+        onOpenChange={(open) => { if (!open) { setProfileToDelete(null); setDeleteError(null); } }}
       >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Remove team member?</AlertDialogTitle>
             <AlertDialogDescription>
-              This will remove{" "}
-              <strong>{profileToDelete?.display_name}</strong> from your
+              This will remove <strong>{profileToDelete?.display_name}</strong> from your
               organization. This action cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           {deleteError && (
-            <p role="alert" className="text-sm text-destructive px-1">
-              {deleteError}
-            </p>
+            <p role="alert" className="text-sm text-destructive px-1">{deleteError}</p>
           )}
           <AlertDialogFooter>
             <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
@@ -213,7 +177,7 @@ export default function TeamDirectoryPage() {
               disabled={isDeleting}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              {isDeleting ? "Removing\u2026" : "Remove"}
+              {isDeleting ? 'Removing…' : 'Remove'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -225,24 +189,13 @@ export default function TeamDirectoryPage() {
 function Breadcrumb() {
   return (
     <nav aria-label="Breadcrumb" className="flex items-center gap-1.5 text-sm">
-      <Link
-        href="/"
-        className="text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 rounded"
-      >
+      <Link href="/" className="text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 rounded">
         Home
       </Link>
-      <ChevronRight
-        className="h-3.5 w-3.5 text-muted-foreground"
-        aria-hidden="true"
-      />
+      <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
       <span className="text-muted-foreground">Team</span>
-      <ChevronRight
-        className="h-3.5 w-3.5 text-muted-foreground"
-        aria-hidden="true"
-      />
-      <span aria-current="page" className="font-medium">
-        Directory
-      </span>
+      <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
+      <span aria-current="page" className="font-medium">Directory</span>
     </nav>
   );
 }
