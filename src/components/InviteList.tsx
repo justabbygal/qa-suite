@@ -1,13 +1,22 @@
 "use client";
 
 import { useState } from "react";
-import { RefreshCw, X, Loader2, AlertCircle, RotateCcw } from "lucide-react";
+import {
+  RefreshCw,
+  X,
+  Loader2,
+  AlertCircle,
+  RotateCcw,
+  Lock,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import type { Invite, InviteRole, InviteStatus } from "@/types";
 import type { InviteFilters, InviteActionResult } from "@/hooks/useInvites";
 import { getEffectiveStatus } from "@/hooks/useInvites";
+import { checkCanManageInvite } from "@/lib/services/admin-restrictions";
+import type { Role } from "@/lib/permissions/types";
 
 // --- Style maps ---
 
@@ -122,6 +131,8 @@ interface InviteListProps {
   onResend: (inviteId: string) => Promise<InviteActionResult>;
   onCancel: (inviteId: string) => Promise<InviteActionResult>;
   onRetry: () => void;
+  /** Current user's role — used to enforce admin restrictions on invite actions. */
+  currentUserRole?: "owner" | "admin";
 }
 
 // --- Main component ---
@@ -135,6 +146,7 @@ export default function InviteList({
   onResend,
   onCancel,
   onRetry,
+  currentUserRole,
 }: InviteListProps) {
   const [actionInProgress, setActionInProgress] = useState<Set<string>>(
     new Set()
@@ -163,6 +175,14 @@ export default function InviteList({
     if (!result.success && result.error) {
       setActionErrors((prev) => ({ ...prev, [inviteId]: result.error! }));
     }
+  }
+
+  /** Returns true when the current user is permitted to act on an invite. */
+  function canActOnInvite(inviteRole: InviteRole): boolean {
+    if (!currentUserRole) return true;
+    const actorRole = currentUserRole as Role;
+    const targetRole = inviteRole.toLowerCase() as Role;
+    return checkCanManageInvite(actorRole, targetRole).allowed;
   }
 
   function handleSortChange(e: React.ChangeEvent<HTMLSelectElement>) {
@@ -342,6 +362,7 @@ export default function InviteList({
                     getEffectiveStatus(invite) === "pending";
                   const isActing = actionInProgress.has(invite.id);
                   const actionError = actionErrors[invite.id];
+                  const canAct = canActOnInvite(invite.role);
 
                   return (
                     <tr
@@ -385,7 +406,7 @@ export default function InviteList({
                               />
                             </span>
                           )}
-                          {isPending && (
+                          {isPending && canAct && (
                             <>
                               <Button
                                 variant="outline"
@@ -427,6 +448,19 @@ export default function InviteList({
                               </Button>
                             </>
                           )}
+                          {isPending && !canAct && (
+                            <span
+                              className="flex items-center gap-1 text-xs text-muted-foreground"
+                              title="Admins cannot manage Admin or Owner invitations"
+                              aria-label="Action restricted — Admins cannot manage Admin or Owner invitations"
+                            >
+                              <Lock
+                                className="h-3.5 w-3.5"
+                                aria-hidden="true"
+                              />
+                              Restricted
+                            </span>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -447,6 +481,7 @@ export default function InviteList({
               const isPending = getEffectiveStatus(invite) === "pending";
               const isActing = actionInProgress.has(invite.id);
               const actionError = actionErrors[invite.id];
+              const canAct = canActOnInvite(invite.role);
 
               return (
                 <li key={invite.id}>
@@ -496,7 +531,7 @@ export default function InviteList({
                         )}
 
                         {/* Actions */}
-                        {isPending && (
+                        {isPending && canAct && (
                           <div className="flex gap-2 pt-1">
                             <Button
                               variant="outline"
@@ -538,6 +573,18 @@ export default function InviteList({
                               Cancel
                             </Button>
                           </div>
+                        )}
+                        {isPending && !canAct && (
+                          <p
+                            className="flex items-center gap-1.5 pt-1 text-xs text-muted-foreground"
+                            aria-label="Action restricted"
+                          >
+                            <Lock
+                              className="h-3.5 w-3.5 shrink-0"
+                              aria-hidden="true"
+                            />
+                            Admins cannot manage Admin or Owner invitations
+                          </p>
                         )}
                       </div>
                     </CardContent>
